@@ -1,0 +1,12 @@
+name: sniffles
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - samtools
+  - sniffles
+  - SURVIVOR
+  - igv
+  - pbsim2
