@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 ## Set these variables to your liking.
-READSFILE=/media/DataXFS/ngmlr_data/Genomes/c_elegans/pbsim_coverage10/sd_0004.fastq
-REFFILE=/media/DataXFS/ngmlr_data/Genomes/c_elegans/refs/sd_0004_sv0.fasta
+READSFILE=/media/DataXFS/ngmlr_data/Genomes/c_elegans/pbsim_coverage40/sd_0004.fastq
+REFFILE=/media/DataXFS/ngmlr_data/Genomes/c_elegans/refs/sd_0004/10indels/sd0004_10indels.fasta
 # READSFILE=/media/DataXFS/ngmlr_data/Genomes/Amanita_phalloides/pbsim_cov1/amanita_reads.fastq
 # REFFILE=/media/DataXFS/ngmlr_data/Genomes/Amanita_phalloides/survivor/amanita0.0.fasta # survivor_amanita/amanita0.1smol.fasta
-THREADS=12
+THREADS=10
 # this means that at least SNIFFLES_MIN_COVERAGE reads must agree on an SV to be detected.
 # you should use a dataset using a coverage large enough to be sure you detect your SVs.
 # I don't know exactly what "large enough" is. In production they often go for a coverage of 40-50.
 # this means that statistically DNA is covered around 50 times, this redundancy allows to be certain about mapping.
-SNIFFLES_MIN_COVERAGE=3
+SNIFFLES_MIN_COVERAGE=10
 OPTIMIZE=pacbio
+PREFIX=depth40 #optional for naming
+
 
 #!/bin/bash
 for SUBSEGMENT in $@
@@ -18,7 +20,7 @@ do
     # These are automatically generated variables
     # SUBSEGMENT=$1
     DIR=.
-    NICKNAME="$OPTIMIZE-$(basename $READSFILE | sed s/.fastq$//)"
+    NICKNAME="$PREFIX-$(basename $READSFILE | sed s/.fastq$//)-$(basename $REFFILE | sed s/.fastq$//)"
     DATE=$(date --iso-8601=seconds)
     GPROFFILENAME=gprof.$NICKNAME.$SUBSEGMENT.txt
     OUTPUTFILENAME=$NICKNAME.result.$SUBSEGMENT.sam
@@ -47,7 +49,5 @@ do
     $HOME/miniconda3/envs/sniffles/bin/samtools sort -o $OUTPUTDIR/$OUTPUTFILENAME.sort.bam $OUTPUTDIR/$OUTPUTFILENAME.bam 
     $HOME/miniconda3/envs/sniffles/bin/samtools index $OUTPUTDIR/$OUTPUTFILENAME.sort.bam
     $HOME/miniconda3/envs/sniffles/bin/sniffles -s $SNIFFLES_MIN_COVERAGE -m $OUTPUTDIR/$OUTPUTFILENAME.sort.bam -v $OUTPUTDIR/$OUTPUTFILENAME.vcf
-    # cat $OUTPUTDIR/$OUTPUTFILENAME.vcf
+    $HOME/miniconda3/envs/sniffles/bin/SURVIVOR eval $(echo "$REFFILE" | sed "s/fastq/bed/g") 100 /dev/null
 done
-
-# diff -y --suppress-common-lines PacBio_3000_head.result.256-2021-11-26T16:15:58+09:00.sam.sort.txt PacBio_3000_head.result.1024-2021-11-26T16:30:40+09:00.sam.sort.txt | wc -l

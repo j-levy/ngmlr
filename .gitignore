@@ -14,3 +14,7 @@ lib/libgff
 /Release/
 /build-linux/
 test_env.sh
+bld/
+out/
+**.log
+**.out
