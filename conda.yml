@@ -1,10 +1,11 @@
-name: sniffles
+name: ngmlr
 
 channels:
   - conda-forge
   - bioconda
 
 dependencies:
+  - python
   - samtools
   - sniffles
   - SURVIVOR
