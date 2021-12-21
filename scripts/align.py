@@ -3,8 +3,8 @@
 import os
 import re # regular expressions
 import time
-import json
 import subprocess
+import math
 
 utf8 =  'utf-8'
 
@@ -12,6 +12,7 @@ utf8 =  'utf-8'
 
 from enum import Enum
 class SvType(Enum):
+    NONE = "NONE"
     DUP = "DUPLICATION"
     INDEL = "INDEL"
     INVDEL = "INV_del"
@@ -101,7 +102,7 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     dataset['ref'] =  f"{sim_dir}/sd_{chromosome_nbr:04}.ref"
     dataset['simulatedepth'] = depth
     dataset['threads'] = os.cpu_count()
-    dataset['snifflescoverage'] = depth/4
+    dataset['snifflescoverage'] = math.ceil(depth/4)
     dataset['subsegment'] = 256
     dataset['optimize'] = "pacbio"
     dataset['nick'] = ""
@@ -109,8 +110,11 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     dataset['conda_bin'] = "$HOME/miniconda3/envs/ngmlr/bin"
 
     ## then generate the SVs you want
-    output_prefix = generate_sv(dataset['ref'], sv_type, sv_nbr)
-    dataset['ref'] = f"{sim_dir}/{output_prefix}.fasta"
+    if sv_type == SvType.NONE:
+        output_prefix = f"sd_{chromosome_nbr:04}.ref"
+    else:
+        output_prefix = generate_sv(dataset['ref'], sv_type, sv_nbr)
+        dataset['ref'] = f"{sim_dir}/{output_prefix}.fasta"
 
 
     # add some pre-computed fields to the dict
@@ -122,17 +126,15 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     return dataset
 
 
-
-def prepare_folder(dataset):
-    print(f"make folder: {dataset['output_dir']}")
-    os.makedirs(dataset['output_dir'])
-
-
 def create_sv(dataset):
     print("not implemented yet")
 
 
 def align(git_dir, dataset):
+    if not(os.path.exists(dataset['output_dir']) and os.path.isdir(dataset['output_dir'])):
+        print(f"make folder: {dataset['output_dir']}")
+        os.makedirs(dataset['output_dir'])
+
     start_time = time.time()
     os.system(f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
         --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
@@ -150,15 +152,15 @@ def bam_convert(dataset):
     output_file_path = f"{dataset['output_dir']}/{dataset['output_filename']}"
     os.system(f"{conda_bin}/samtools view -o {output_file_path}.bam {output_file_path}")
     os.system(f"{conda_bin}/samtools sort -o  {output_file_path}.sort.bam  {output_file_path}.bam")
-    # )rm {dataset['output_dir']}/{dataset['output_filename']}.bam")
     os.system(f"{conda_bin}/samtools index  {output_file_path}.sort.bam")
 
 def sv_call(dataset):
     conda_bin = dataset['conda_bin']
-    os.system(f"{conda_bin}/sniffles -s {dataset['coverage']} -m {dataset['output_dir']}/{dataset['output_filename']}.sort.bam -v {dataset['output_dir']}/{dataset['output_filename']}.vcf")
+    os.system(f"{conda_bin}/sniffles -s {dataset['snifflescoverage']} -m {dataset['output_dir']}/{dataset['output_filename']}.sort.bam -v {dataset['output_dir']}/{dataset['output_filename']}.vcf")
 
 def eval(dataset):
     conda_bin = dataset['conda_bin']
+    # TODO: debug why this doesn't run
     res = subprocess.run(f"{conda_bin}/SURVIVOR", 
         "eval",  
         f"{dataset['output_dir']}/{dataset['output_filename']}.vcf",
@@ -178,9 +180,7 @@ def git_dir():
 
 
 print("align boilerplate code - version alpha 0.1.0")
-default_ref = "/media/DataXFS/ngmlr_data/Genomes/c_elegans/c_elegans.fasta"
 
-generate_dataset(default_ref, SvType.INV)
 
 # prepare_folder(dataset)
 # align(git_dir, dataset)
