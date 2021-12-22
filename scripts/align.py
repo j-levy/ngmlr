@@ -1,6 +1,7 @@
 #/usr/bin/env python3
 
 import os
+import shutil
 import re # regular expressions
 import time
 import subprocess
@@ -21,8 +22,7 @@ class SvType(Enum):
     TRANS = "TRANSLOCATION" # translocation will be disabled at first
 
 def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
-    survivor_template = f"""
-PARAMETER FILE: DO JUST MODIFY THE VALUES AND KEEP THE SPACES!
+    survivor_template = f"""PARAMETER FILE: DO JUST MODIFY THE VALUES AND KEEP THE SPACES!
 DUPLICATION_minimum_length: 100
 DUPLICATION_maximum_length: 10000
 DUPLICATION_number: 0
@@ -40,8 +40,7 @@ INV_del_maximum_length: 800
 INV_del_number: 0
 INV_dup_minimum_length: 600
 INV_dup_maximum_length: 800
-INV_dup_number: 0
-"""
+INV_dup_number: 0"""
 
     survivor_template = survivor_template.replace(f"{sv_type.value}_number: 0", f"{sv_type.value}_number: {sv_nbr}")
     # print(f"{sv_type.value}_number: 0")
@@ -67,7 +66,8 @@ INV_dup_number: 0
 def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
                         error_model="P4C2", 
                         length_mean=9000, length_sd=7000, accuracy_mean=0.85, depth=20, 
-                        chromosome_nbr=4):
+                        chromosome_nbr=4,
+                        force=False):
     diff_ratios = {
         "pacbio": "6:50:54",
         "ont": "23:31:46"
@@ -81,6 +81,11 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     sim_dir = f"{ref_dir}/pbsim_{depth}/"
 
     # if the directory already exists, skip read simulation.
+    if force:
+        if os.path.exists(sim_dir) and os.path.isdir(sim_dir):
+            print(f"Folder {sim_dir} exists and force=True, deleting folder)")
+            shutil.rmtree(sim_dir)
+
     if not(os.path.exists(sim_dir) and os.path.isdir(sim_dir)):
         os.makedirs(sim_dir)
         os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
@@ -101,7 +106,7 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     dataset['read'] = f"{sim_dir}/sd_{chromosome_nbr:04}.fastq"
     dataset['ref'] =  f"{sim_dir}/sd_{chromosome_nbr:04}.ref"
     dataset['simulatedepth'] = depth
-    dataset['threads'] = os.cpu_count()
+    dataset['threads'] = os.cpu_count() - 1
     dataset['snifflescoverage'] = math.ceil(depth/4)
     dataset['subsegment'] = 256
     dataset['optimize'] = "pacbio"
@@ -126,14 +131,16 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     return dataset
 
 
-def create_sv(dataset):
-    print("not implemented yet")
-
 
 def align(git_dir, dataset):
     if not(os.path.exists(dataset['output_dir']) and os.path.isdir(dataset['output_dir'])):
         print(f"make folder: {dataset['output_dir']}")
         os.makedirs(dataset['output_dir'])
+
+    with open(dataset['read']) as f:
+        count = sum(1 for _ in f)
+        seqs = count/4
+        print(f"{seqs} reads loaded.")
 
     start_time = time.time()
     os.system(f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
