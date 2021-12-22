@@ -5,10 +5,12 @@ import json
 
 default_ref = "/media/DataXFS/ngmlr_data/Genomes/c_elegans/c_elegans.fasta"
 
-dataset = align.generate_dataset(default_ref, align.SvType.INV, depth=1) #just checking the whole pipeline *runs*
+dataset = align.generate_dataset(default_ref, align.SvType.INV, depth=20) #just checking the whole pipeline *runs*
 print(json.dumps(dataset, indent=4))
 
-for subsegment in [256]:
+dataset["snifflescoverage"] = 8
+
+for subsegment in [256, 512, 1024]:
     print(f"Running with subsegment length {subsegment}\n")
     dataset["subsegment"] = subsegment
     align.align(align.git_dir(), dataset)

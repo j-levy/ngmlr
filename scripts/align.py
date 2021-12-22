@@ -161,12 +161,9 @@ def sv_call(dataset):
 def eval(dataset):
     conda_bin = dataset['conda_bin']
     # TODO: debug why this doesn't run
-    res = subprocess.run(f"{conda_bin}/SURVIVOR", 
-        "eval",  
-        f"{dataset['output_dir']}/{dataset['output_filename']}.vcf",
-        f"{dataset['ref'].replace('.fasta', '.bed')}",
-        f"{dataset['min_sv_size']}",
-        f"{dataset['output_dir']}/eval_{dataset['output_filename']}", stdout=subprocess.PIPE).stdout.decode(utf8)
+    res = os.system(f"{conda_bin}/SURVIVOR eval {dataset['output_dir']}/{dataset['output_filename']}.vcf \
+                    {dataset['ref'].replace('.fasta', '.bed')} {dataset['min_sv_size']} \
+                    {dataset['output_dir']}/eval_{dataset['output_filename']}")
     print(res)
 
 def bash_run(command):
