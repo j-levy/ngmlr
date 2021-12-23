@@ -98,7 +98,7 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
     dataset['subsegment'] = 256
     dataset['optimize'] = "pacbio"
     dataset['nick'] = ""
-    dataset['max_sv_distance'] = 100
+    dataset['max_sv_distance'] = 30
     dataset['conda_bin'] = "$HOME/miniconda3/envs/ngmlr/bin"
 
     ## then generate the SVs you want
@@ -198,7 +198,7 @@ def align(git_dir, dataset):
     end_time= time.time()
     runtime = end_time - start_time
     print(f"+++++ Clock time: {runtime}")
-    os.system(f"echo '+++++ Clock time: $runtime' > {dataset['output_dir']}/{dataset['gprof_filename']}")
+    os.system(f"echo '+++++ Clock time: {runtime}' > {dataset['output_dir']}/{dataset['gprof_filename']}")
     os.system(f"gprof {git_dir}/bin/ngmlr-0.2.8/ngmlr >> {dataset['output_dir']}/{dataset['gprof_filename']}")
 
 def bam_convert(dataset):
@@ -214,10 +214,15 @@ def sv_call(dataset):
 
 def eval(dataset):
     conda_bin = dataset['conda_bin']
-    res = os.system(f"{conda_bin}/SURVIVOR eval {dataset['output_dir']}/{dataset['output_filename']}.vcf \
+    res = os.popen(f"{conda_bin}/SURVIVOR eval {dataset['output_dir']}/{dataset['output_filename']}.vcf \
                     {dataset['ref'].replace('.fasta', '.bed')} {dataset['max_sv_distance']} \
                     {dataset['output_dir']}/eval_{dataset['output_filename']}")
-    print(res)
+    output = res.read()
+    print(output)
+    sveval_filepath = f"{dataset['output_dir']}/eval_{dataset['output_filename']}.sveval"
+    f = open(f"{sveval_filepath}", "w")
+    f.write(output)
+    f.close()
 
 def bash_run(command):
     return subprocess.run(command.split(" "), stdout=subprocess.PIPE).stdout.decode(utf8)
