@@ -62,6 +62,57 @@ INV_dup_number: 0"""
     
     return output_prefix
 
+def update_dataset(dataset):
+    # add some pre-computed fields to the dict
+    dataset['nickname'] = f"{dataset['nick']}-{os.path.basename(dataset['read'])}-{os.path.basename(dataset['ref'])}"
+    dataset['gprof_filename'] = f"gprof.{dataset['nickname']}-{dataset['subsegment']}.txt"
+    dataset['output_filename'] = f"{dataset['nickname']}-{dataset['subsegment']}.sam"
+    dataset['output_dir']= f"out/{dataset['nickname']}/threads-{dataset['threads']}/"
+
+
+def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
+                        error_model="P4C2", 
+                        length_mean=9000, length_sd=7000, accuracy_mean=0.85, depth=20, 
+                        chromosome_nbr=4,
+                        ):
+    diff_ratios = {
+        "pacbio": "6:50:54",
+        "ont": "23:31:46"
+    }
+
+    diff_ratio_name = "pacbio"
+    diff_ratio = diff_ratios[diff_ratio_name]
+    error_model_file = f"{git_dir()}/scripts/pbsim2_hmm_model/{error_model}.model"
+    prefix = "sd"
+    ref_dir = os.path.abspath(os.path.dirname(ref))
+    sim_dir = f"{ref_dir}/pbsim_{depth}/"
+
+
+    dataset = dict()
+    # map args to the dict. Easier to use
+    dataset['read'] = f"{sim_dir}/{prefix}_{chromosome_nbr:04}.fastq"
+    dataset['ref'] =  f"{sim_dir}/{prefix}_{chromosome_nbr:04}.ref"
+    dataset['simulatedepth'] = depth
+    dataset['threads'] = os.cpu_count() - 1
+    dataset['snifflescoverage'] = math.ceil(depth/4)
+    dataset['subsegment'] = 256
+    dataset['optimize'] = "pacbio"
+    dataset['nick'] = ""
+    dataset['max_sv_distance'] = 100
+    dataset['conda_bin'] = "$HOME/miniconda3/envs/ngmlr/bin"
+
+    ## then generate the SVs you want
+    if sv_type == SvType.NONE:
+        output_prefix = f"sd_{chromosome_nbr:04}.ref"
+    else:
+        ref_dir = os.path.abspath(os.path.dirname(dataset['ref']))
+        ref_file = os.path.basename(dataset['ref'])
+        output_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+        dataset['ref'] = f"{sim_dir}/{output_prefix}.fasta"
+    update_dataset(dataset)
+    return dataset
+
+
 
 def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
                         error_model="P4C2", 
@@ -103,15 +154,15 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
 
     dataset = dict()
     # map args to the dict. Easier to use
-    dataset['read'] = f"{sim_dir}/sd_{chromosome_nbr:04}.fastq"
-    dataset['ref'] =  f"{sim_dir}/sd_{chromosome_nbr:04}.ref"
+    dataset['read'] = f"{sim_dir}/{prefix}_{chromosome_nbr:04}.fastq"
+    dataset['ref'] =  f"{sim_dir}/{prefix}_{chromosome_nbr:04}.ref"
     dataset['simulatedepth'] = depth
     dataset['threads'] = os.cpu_count() - 1
     dataset['snifflescoverage'] = math.ceil(depth/4)
     dataset['subsegment'] = 256
     dataset['optimize'] = "pacbio"
     dataset['nick'] = ""
-    dataset['min_sv_size'] = 100
+    dataset['max_sv_distance'] = 100
     dataset['conda_bin'] = "$HOME/miniconda3/envs/ngmlr/bin"
 
     ## then generate the SVs you want
@@ -121,12 +172,8 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
         output_prefix = generate_sv(dataset['ref'], sv_type, sv_nbr)
         dataset['ref'] = f"{sim_dir}/{output_prefix}.fasta"
 
+    update_dataset(dataset)
 
-    # add some pre-computed fields to the dict
-    dataset['nickname'] = f"{dataset['nick']}-{os.path.basename(dataset['read'])}-{os.path.basename(dataset['ref'])}"
-    dataset['gprof_filename'] = f"gprof.{dataset['nickname']}-{dataset['subsegment']}.txt"
-    dataset['output_filename'] = f"{dataset['nickname']}-{dataset['subsegment']}.sam"
-    dataset['output_dir']= f"out/{dataset['nickname']}/threads-{dataset['threads']}/"
     
     return dataset
 
@@ -167,9 +214,8 @@ def sv_call(dataset):
 
 def eval(dataset):
     conda_bin = dataset['conda_bin']
-    # TODO: debug why this doesn't run
     res = os.system(f"{conda_bin}/SURVIVOR eval {dataset['output_dir']}/{dataset['output_filename']}.vcf \
-                    {dataset['ref'].replace('.fasta', '.bed')} {dataset['min_sv_size']} \
+                    {dataset['ref'].replace('.fasta', '.bed')} {dataset['max_sv_distance']} \
                     {dataset['output_dir']}/eval_{dataset['output_filename']}")
     print(res)
 
