@@ -74,6 +74,7 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
                         error_model="P4C2", 
                         length_mean=9000, length_sd=7000, accuracy_mean=0.85, depth=20, 
                         chromosome_nbr=4,
+                        force=False
                         ):
     diff_ratios = {
         "pacbio": "6:50:54",
