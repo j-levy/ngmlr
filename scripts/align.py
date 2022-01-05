@@ -6,9 +6,10 @@ import re # regular expressions
 import time
 import subprocess
 import math
+import json
 
 utf8 =  'utf-8'
-
+JSON_INDENT = 4
 
 
 from enum import Enum
@@ -21,7 +22,8 @@ class SvType(Enum):
     INVDUP = "INV_dup"
     TRANS = "TRANSLOCATION" # translocation will be disabled at first
 
-def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
+# this function (should) work with release version of SURVIVOR.
+def generate_sv_legacy(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
     survivor_template = f"""PARAMETER FILE: DO JUST MODIFY THE VALUES AND KEEP THE SPACES!
 DUPLICATION_minimum_length: 100
 DUPLICATION_maximum_length: 10000
@@ -53,6 +55,52 @@ INV_dup_number: 0"""
     survivor_param = f"{ref_dir}/{output_prefix}.svr"
     f = open(f"{survivor_param}", "w")
     f.write(survivor_template)
+    f.close()
+    snp_rate = 0
+
+    # SURVIVOR simSV PATH/TO/REFERENCE.fasta PATH/TO/param.svr FREQUENCY_OF_SNP(0..1) 0(always using simulated reads) OUTPUT_PREFIX
+    print(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
+    os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
+    
+    return output_prefix
+
+# this function works with the patched version of SURVIVOR that supports JSON parameter files
+def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
+    survivor_dict = dict()
+    survivor_dict["DUPLICATION_minimum_length"] = 100
+    survivor_dict["DUPLICATION_maximum_length"] = 10000
+    survivor_dict["DUPLICATION_number"] = 0
+    survivor_dict["INDEL_minimum_length"] = 20
+    survivor_dict["INDEL_maximum_length"] = 500
+    survivor_dict["INDEL_number"] = 0
+    survivor_dict["TRANSLOCATION_minimum_length"] = 0
+    survivor_dict["TRANSLOCATION_maximum_length"] = 0
+    survivor_dict["TRANSLOCATION_number"] = 0
+    survivor_dict["INVERSION_minimum_length"] = 600
+    survivor_dict["INVERSION_maximum_length"] = 800
+    survivor_dict["INVERSION_number"] = 0
+    survivor_dict["INV_del_minimum_length"] = 600
+    survivor_dict["INV_del_maximum_length"] = 800
+    survivor_dict["INV_del_number"] = 0
+    survivor_dict["INV_dup_minimum_length"] = 600
+    survivor_dict["INV_dup_maximum_length"] = 800
+    survivor_dict["INV_dup_number"] = 0
+    survivor_dict["Number_haploid"] = 1
+    survivor_dict["homozygous_ratio"] = 0.6
+
+    # survivor_template = survivor_template.replace(f"{sv_type.value}_number: 0", f"{sv_type.value}_number: {sv_nbr}")
+    # print(f"{sv_type.value}_number: 0")
+    # print(survivor_template)
+
+    survivor_dict[f"{sv_type.value}_number"] = sv_nbr
+
+    ref_dir = os.path.abspath(os.path.dirname(ref))
+    ref_file = os.path.basename(ref)
+
+    output_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+    survivor_param = f"{ref_dir}/{output_prefix}.json"
+    f = open(f"{survivor_param}", "w")
+    f.write(json.dumps(survivor_dict, indent=JSON_INDENT))
     f.close()
     snp_rate = 0
 
