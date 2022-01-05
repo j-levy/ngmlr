@@ -69,6 +69,7 @@ def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/
     survivor_dict = dict()
     survivor_dict["DUPLICATION_minimum_length"] = 100
     survivor_dict["DUPLICATION_maximum_length"] = 10000
+    survivor_dict["DUPLICATION_maximum_num"] = 5
     survivor_dict["DUPLICATION_number"] = 0
     survivor_dict["INDEL_minimum_length"] = 20
     survivor_dict["INDEL_maximum_length"] = 500
@@ -86,7 +87,7 @@ def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/
     survivor_dict["INV_dup_maximum_length"] = 800
     survivor_dict["INV_dup_number"] = 0
     survivor_dict["Number_haploid"] = 1
-    survivor_dict["homozygous_ratio"] = 0.6
+    survivor_dict["homozygous_ratio"] = 0
 
     # survivor_template = survivor_template.replace(f"{sv_type.value}_number: 0", f"{sv_type.value}_number: {sv_nbr}")
     # print(f"{sv_type.value}_number: 0")
@@ -106,8 +107,9 @@ def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/
 
     # SURVIVOR simSV PATH/TO/REFERENCE.fasta PATH/TO/param.svr FREQUENCY_OF_SNP(0..1) 0(always using simulated reads) OUTPUT_PREFIX
     print(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
-    os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
-    
+    res = os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
+    if res != 0:
+        exit(1)
     return output_prefix
 
 def update_dataset(dataset):
@@ -182,12 +184,16 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
 
     # if the directory already exists, skip read simulation.
     if force:
-        if os.path.exists(sim_dir) and os.path.isdir(sim_dir):
+        if os.path.exists(sim_dir) and os.path.isdir(sim_dir) and len(os.listdir(sim_dir)) > 0:
             print(f"Folder {sim_dir} exists and force=True, deleting folder)")
-            shutil.rmtree(sim_dir)
+            for file in os.listdir(sim_dir):
+                os.remove(f"{sim_dir}/{file}")
 
-    if not(os.path.exists(sim_dir) and os.path.isdir(sim_dir)):
-        os.makedirs(sim_dir)
+    if not(os.path.exists(sim_dir) and os.path.isdir(sim_dir)) or len(os.listdir(sim_dir)) == 0:
+        if not(os.path.exists(sim_dir)):
+            os.makedirs(sim_dir)
+        
+        
         os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
                         --hmm_model {error_model_file} \
                         --depth {depth} \
