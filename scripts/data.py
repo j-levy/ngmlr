@@ -16,9 +16,11 @@ class SvType(Enum):
 default_ref = "/media/DataXFS/ngmlr_data/Genomes/s_cerevisiae/s_cerevisiae.fasta"
 
 sv_types = [align.SvType.DUP] #, align.SvType.INV, align.SvType.DUP, align.SvType.INDEL, align.SvType.INVDEL]
-sv_nbr=10
+sv_nbr=100
 length_mean=9000
 length_sd=7000
 depth=20
 chromosome_nbr=None
 force=True
+
+subsegments = [128, 256, 384, 512, 768, 1024, 2048]

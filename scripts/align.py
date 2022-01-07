@@ -60,8 +60,9 @@ INV_dup_number: 0"""
 
     # SURVIVOR simSV PATH/TO/REFERENCE.fasta PATH/TO/param.svr FREQUENCY_OF_SNP(0..1) 0(always using simulated reads) OUTPUT_PREFIX
     print(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
-    os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
-    
+    res = os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
+    if res != 0:
+        exit(1)
     return output_prefix
 
 # this function works with the patched version of SURVIVOR that supports JSON parameter files

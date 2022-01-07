@@ -8,7 +8,7 @@ for align_sv_type in sv_types:
 
     print(json.dumps(dataset, indent=4))
 
-    for subsegment in [128, 256, 384, 512]:
+    for subsegment in subsegments:
         print(f"Running with subsegment length {subsegment}\n")
         dataset["subsegment"] = subsegment
         dataset['max_sv_distance'] = 100
