@@ -23,7 +23,7 @@ class SvType(Enum):
     TRANS = "TRANSLOCATION" # translocation will be disabled at first
 
 # this function (should) work with release version of SURVIVOR.
-def generate_sv_legacy(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
+def generate_sv(ref, sim_subdir, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
     survivor_template = f"""PARAMETER FILE: DO JUST MODIFY THE VALUES AND KEEP THE SPACES!
 DUPLICATION_minimum_length: 100
 DUPLICATION_maximum_length: 10000
@@ -51,7 +51,8 @@ INV_dup_number: 0"""
     ref_dir = os.path.abspath(os.path.dirname(ref))
     ref_file = os.path.basename(ref)
 
-    output_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+    sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+    output_prefix = f"{sim_subdir}/{sved_prefix}"
     survivor_param = f"{ref_dir}/{output_prefix}.svr"
     f = open(f"{survivor_param}", "w")
     f.write(survivor_template)
@@ -63,10 +64,10 @@ INV_dup_number: 0"""
     res = os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
     if res != 0:
         exit(1)
-    return output_prefix
+    return sved_prefix
 
 # this function works with the patched version of SURVIVOR that supports JSON parameter files
-def generate_sv(ref, sim_dir, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
+def generate_sv_json(ref, sim_dir, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
     survivor_dict = dict()
     survivor_dict["DUPLICATION_minimum_length"] = 100
     survivor_dict["DUPLICATION_maximum_length"] = 10000
