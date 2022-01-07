@@ -65,7 +65,7 @@ INV_dup_number: 0"""
     return output_prefix
 
 # this function works with the patched version of SURVIVOR that supports JSON parameter files
-def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
+def generate_sv(ref, sim_dir, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
     survivor_dict = dict()
     survivor_dict["DUPLICATION_minimum_length"] = 100
     survivor_dict["DUPLICATION_maximum_length"] = 10000
@@ -98,7 +98,8 @@ def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/
     ref_dir = os.path.abspath(os.path.dirname(ref))
     ref_file = os.path.basename(ref)
 
-    output_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+    sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+    output_prefix = f"{sim_dir}/{sved_prefix}"
     survivor_param = f"{ref_dir}/{output_prefix}.json"
     f = open(f"{survivor_param}", "w")
     f.write(json.dumps(survivor_dict, indent=JSON_INDENT))
@@ -110,7 +111,7 @@ def generate_sv(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/
     res = os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
     if res != 0:
         exit(1)
-    return output_prefix
+    return sved_prefix
 
 def update_dataset(dataset):
     # add some pre-computed fields to the dict
@@ -123,7 +124,7 @@ def update_dataset(dataset):
 def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
                         error_model="P4C2", 
                         length_mean=9000, length_sd=7000, accuracy_mean=0.85, depth=20, 
-                        chromosome_nbr=4,
+                        chromosome_nbr=None,
                         force=False
                         ):
     diff_ratios = {
@@ -136,13 +137,21 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
     error_model_file = f"{git_dir()}/scripts/pbsim2_hmm_model/{error_model}.model"
     prefix = "sd"
     ref_dir = os.path.abspath(os.path.dirname(ref))
-    sim_dir = f"{ref_dir}/pbsim_{depth}/"
+    sim_subdir = f"pbsim_{depth}"
+    sim_dir = f"{ref_dir}/{sim_subdir}"
+    ref_dir = os.path.abspath(os.path.dirname(ref))
+    ref_file = os.path.basename(ref)
 
+    sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
 
     dataset = dict()
     # map args to the dict. Easier to use
-    dataset['read'] = f"{sim_dir}/{prefix}_{chromosome_nbr:04}.fastq"
-    dataset['ref'] =  f"{sim_dir}/{prefix}_{chromosome_nbr:04}.ref"
+    if (chromosome_nbr == None):
+        dataset['read'] = f"{sim_dir}/{sved_prefix}.fastq"
+        dataset['bed'] = f"{sim_dir}/{sved_prefix}.bed"
+    else:
+         dataset['read'] = f"{sim_dir}/{sved_prefix}_{chromosome_nbr:04}.fastq"
+    dataset['ref'] =  f"{ref}"
     dataset['simulatedepth'] = depth
     dataset['threads'] = os.cpu_count() - 1
     dataset['snifflescoverage'] = math.ceil(depth/4)
@@ -152,14 +161,6 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
     dataset['max_sv_distance'] = 30
     dataset['conda_bin'] = "$HOME/miniconda3/envs/ngmlr/bin"
 
-    ## then generate the SVs you want
-    if sv_type == SvType.NONE:
-        output_prefix = f"sd_{chromosome_nbr:04}.ref"
-    else:
-        ref_dir = os.path.abspath(os.path.dirname(dataset['ref']))
-        ref_file = os.path.basename(dataset['ref'])
-        output_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
-        dataset['ref'] = f"{sim_dir}/{output_prefix}.fasta"
     update_dataset(dataset)
     return dataset
 
@@ -168,7 +169,7 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
 def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
                         error_model="P4C2", 
                         length_mean=9000, length_sd=7000, accuracy_mean=0.85, depth=20, 
-                        chromosome_nbr=4,
+                        chromosome_nbr=None,
                         force=False):
     diff_ratios = {
         "pacbio": "6:50:54",
@@ -180,7 +181,8 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     error_model_file = f"{git_dir()}/scripts/pbsim2_hmm_model/{error_model}.model"
     prefix = "sd"
     ref_dir = os.path.abspath(os.path.dirname(ref))
-    sim_dir = f"{ref_dir}/pbsim_{depth}/"
+    sim_subdir = f"pbsim_{depth}"
+    sim_dir = f"{ref_dir}/{sim_subdir}"
 
     # if the directory already exists, skip read simulation.
     if force:
@@ -189,28 +191,8 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
             for file in os.listdir(sim_dir):
                 os.remove(f"{sim_dir}/{file}")
 
-    if not(os.path.exists(sim_dir) and os.path.isdir(sim_dir)) or len(os.listdir(sim_dir)) == 0:
-        if not(os.path.exists(sim_dir)):
-            os.makedirs(sim_dir)
-        
-        
-        os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
-                        --hmm_model {error_model_file} \
-                        --depth {depth} \
-                        --difference-ratio {diff_ratio} \
-                        --length-mean {length_mean} \
-                        --length-sd {length_sd} \
-                        --accuracy-mean {accuracy_mean} \
-                        --prefix {prefix} \
-                        {ref}
-                """)
-    else:
-        print(f"Folder {sim_dir} already exists, skipping reads simulation (delete folder to regenerate)")
-
     dataset = dict()
     # map args to the dict. Easier to use
-    dataset['read'] = f"{sim_dir}/{prefix}_{chromosome_nbr:04}.fastq"
-    dataset['ref'] =  f"{sim_dir}/{prefix}_{chromosome_nbr:04}.ref"
     dataset['simulatedepth'] = depth
     dataset['threads'] = os.cpu_count() - 1
     dataset['snifflescoverage'] = math.ceil(depth/4)
@@ -218,15 +200,37 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     dataset['optimize'] = "pacbio"
     dataset['nick'] = ""
     dataset['max_sv_distance'] = 100
-    dataset['conda_bin'] = "$HOME/miniconda3/envs/ngmlr/bin"
+    dataset['conda_bin'] = conda_bin
+    #     if not(os.path.exists(sim_dir) and os.path.isdir(sim_dir)) or len(os.listdir(sim_dir)) == 0:
+    #    echo ""
+    # else:
+    #     print(f"Folder {sim_dir} already exists, skipping reads simulation (delete folder contents to regenerate)")
+    if not(os.path.exists(sim_dir)):
+        os.makedirs(sim_dir)
 
     ## then generate the SVs you want
-    if sv_type == SvType.NONE:
-        output_prefix = f"sd_{chromosome_nbr:04}.ref"
-    else:
-        output_prefix = generate_sv(dataset['ref'], sv_type, sv_nbr)
-        dataset['ref'] = f"{sim_dir}/{output_prefix}.fasta"
+    sved_prefix = ""
+    if sv_type != SvType.NONE:
+        sved_prefix = generate_sv(ref, sim_subdir, sv_type, sv_nbr)
+        dataset['bed'] = f"{sim_dir}/{sved_prefix}.bed"
+        os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
+                        --hmm_model {error_model_file} \
+                        --depth {depth} \
+                        --difference-ratio {diff_ratio} \
+                        --length-mean {length_mean} \
+                        --length-sd {length_sd} \
+                        --accuracy-mean {accuracy_mean} \
+                        --prefix {sved_prefix} \
+                        {sved_prefix}.fasta
+                """)
+    if chromosome_nbr == None:
+        os.system(f""" cd {sim_dir} && cat *.fastq > {sved_prefix}.fastq""")
+        dataset["read"] = f"{sim_dir}/{sved_prefix}.fastq"
 
+
+    dataset['ref'] =  f"{ref}"
+    # ref = f"sd_{chromosome_nbr:04}.ref" # the reference stays the reference; YOU DUMB FUCK
+    #     dataset['read'] = f"{ref_dir}/{sved_prefix}_{chromosome_nbr:04}.fastq" # sved_reference_prefix contains already sim_subdir
     update_dataset(dataset)
 
     
@@ -270,7 +274,7 @@ def sv_call(dataset):
 def eval(dataset):
     conda_bin = dataset['conda_bin']
     res = os.popen(f"{conda_bin}/SURVIVOR eval {dataset['output_dir']}/{dataset['output_filename']}.vcf \
-                    {dataset['ref'].replace('.fasta', '.bed')} {dataset['max_sv_distance']} \
+                    {dataset['bed']} {dataset['max_sv_distance']} \
                     {dataset['output_dir']}/eval_{dataset['output_filename']}")
     output = res.read()
     print(output)
