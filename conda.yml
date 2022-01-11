@@ -11,3 +11,6 @@ dependencies:
   - SURVIVOR
   - igv
   - pbsim2
+  - biopython  # for fastq length hist
+  - matplotlib # for fastq length hist
+  - pandas     # for fastq length hist
