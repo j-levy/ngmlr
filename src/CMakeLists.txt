@@ -47,8 +47,8 @@ add_executable(ngmlr
 ADD_CUSTOM_TARGET(recompile_always ALL touch "${CMAKE_SOURCE_DIR}/src/main.cpp")
 
 
-SET_TARGET_PROPERTIES(ngmlr PROPERTIES COMPILE_FLAGS " -g -pg -O2 -DNDEBUG")
-SET_TARGET_PROPERTIES(ngmlr PROPERTIES LINK_FLAGS " -g -pg -O2 -DNDEBUG")
+SET_TARGET_PROPERTIES(ngmlr PROPERTIES COMPILE_FLAGS " -g -O3 -shared-libgcc -DNDEBUG")
+SET_TARGET_PROPERTIES(ngmlr PROPERTIES LINK_FLAGS " -g -O3 -shared-libgcc -DNDEBUG")
 
 ## these don't work...
 # add_compile_options("$<$<CONFIG:RELEASE>: -W -Wall -O3 -pg -pedantic>")
