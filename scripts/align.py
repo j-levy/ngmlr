@@ -117,10 +117,13 @@ def generate_sv_json(ref, sim_dir, sv_type, sv_nbr=10, conda_bin="$HOME/minicond
 
 def update_dataset(dataset):
     # add some pre-computed fields to the dict
-    dataset['nickname'] = f"{dataset['nick']}-{os.path.basename(dataset['read'])}-{os.path.basename(dataset['ref'])}"
+    basename_read = os.path.basename(dataset['read'])
+    basename_read = basename_read.replace(".fastq", "")
+    basename_ref = os.path.basename(dataset['ref']).replace(".fasta", "")
+    dataset['nickname'] = f"{dataset['nick']}-{basename_read}-{basename_ref}"
     dataset['gprof_filename'] = f"gprof.{dataset['nickname']}-{dataset['subsegment']}.txt"
     dataset['output_filename'] = f"{dataset['nickname']}-{dataset['subsegment']}.sam"
-    dataset['output_dir']= f"out/{dataset['nickname']}/threads-{dataset['threads']}/"
+    dataset['output_dir']= os.path.abspath(f"out/{dataset['nickname']}/threads-{dataset['threads']}/")
 
 
 def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
@@ -240,7 +243,8 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
 
 
 
-def align(git_dir, dataset):
+def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/opt/intel/oneapi/vtune/2022.1.0/bin64/vtune", vtune_setvars="/opt/intel/oneapi/setvars.sh"):
+    
     if not(os.path.exists(dataset['output_dir']) and os.path.isdir(dataset['output_dir'])):
         print(f"make folder: {dataset['output_dir']}")
         os.makedirs(dataset['output_dir'])
@@ -251,11 +255,26 @@ def align(git_dir, dataset):
         print(f"{seqs} reads loaded.")
 
     start_time = time.time()
-    os.system(f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
-        --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
-        --subread-length {dataset['subsegment']} \
-        -q {dataset['read']} -r {dataset['ref']} \
-        -o {dataset['output_dir']}/{dataset['output_filename']}""")
+
+    if (is_profiling):
+        # note: os.system runs in shell "sh", for which "source" is not defined. We use "." instead.
+        cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=medium \
+            -app-working-dir "{dataset['output_dir']}" --app-working-dir="{dataset['output_dir']}" \
+            -result-dir "{dataset['output_dir']}/r001hs" \
+            -- \
+            {git_dir}/bin/ngmlr-0.2.8/ngmlr \
+            --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
+            --subread-length {dataset['subsegment']} \
+            -q "{dataset['read']}" -r "{dataset['ref']}" \
+            -o "{dataset['output_dir']}/{dataset['output_filename']}"' """
+        print(cmd)
+        os.system(cmd)
+    else:
+        os.system(f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
+            --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
+            --subread-length {dataset['subsegment']} \
+            -q {dataset['read']} -r {dataset['ref']} \
+            -o {dataset['output_dir']}/{dataset['output_filename']}""")
     end_time= time.time()
     runtime = end_time - start_time
     print(f"+++++ Clock time: {runtime}")
