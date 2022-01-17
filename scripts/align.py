@@ -11,6 +11,23 @@ import json
 utf8 =  'utf-8'
 JSON_INDENT = 4
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+def print_warning(s):
+    print(f"{bcolors.WARNING}{s}{bcolors.ENDC}")
+
+def print_okcyan(s):
+    print(f"{bcolors.OKCYAN}{s}{bcolors.ENDC}")
+
 
 from enum import Enum
 class SvType(Enum):
@@ -64,7 +81,6 @@ INV_dup_number: 0"""
     res = os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
     if res != 0:
         exit(1)
-    return sved_prefix
 
 # this function works with the patched version of SURVIVOR that supports JSON parameter files
 def generate_sv_json(ref, sim_dir, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
@@ -119,10 +135,19 @@ def update_dataset(dataset):
     # add some pre-computed fields to the dict
     basename_read = os.path.basename(dataset['read']).replace(".fastq", "")
     basename_ref = os.path.basename(dataset['ref']).replace(".fasta", "")
-    dataset['nickname'] = f"{dataset['nick']}-{basename_read}-{basename_ref}"
+    dataset['nickname'] = f"{dataset['nick']}-{basename_read}"
     dataset['gprof_filename'] = f"gprof.{dataset['nickname']}-{dataset['subsegment']}.txt"
     dataset['output_filename'] = f"{dataset['nickname']}-{dataset['subsegment']}.sam"
     dataset['output_dir']= os.path.abspath(f"out/{dataset['nickname']}/threads-{dataset['threads']}/")
+    if not(os.path.exists(dataset['output_dir']) and os.path.isdir(dataset['output_dir'])):
+        print_okcyan(f"make folder: {dataset['output_dir']}")
+        os.makedirs(dataset['output_dir'])
+
+    basename_bed = os.path.basename(dataset['bed'])
+    local_bed = f"{dataset['output_dir']}/{basename_bed}"
+    if os.path.isfile(dataset['bed']) and not os.path.isfile(local_bed):
+        shutil.copyfile(dataset['bed'], local_bed)
+    dataset['bed'] = local_bed
 
 
 def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
@@ -143,7 +168,6 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
     ref_dir = os.path.abspath(os.path.dirname(ref))
     sim_subdir = f"pbsim_{depth}"
     sim_dir = f"{ref_dir}/{sim_subdir}"
-    ref_dir = os.path.abspath(os.path.dirname(ref))
     ref_file = os.path.basename(ref)
 
     sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
@@ -154,7 +178,9 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
         dataset['read'] = f"{sim_dir}/{sved_prefix}.fastq"
         dataset['bed'] = f"{sim_dir}/{sved_prefix}.bed"
     else:
-         dataset['read'] = f"{sim_dir}/{sved_prefix}_{chromosome_nbr:04}.fastq"
+        print("Single chromosome unsupported for now, exiting")
+        exit(255)
+        # dataset['read'] = f"{sim_dir}/{sved_prefix}_{chromosome_nbr:04}.fastq"
     dataset['ref'] =  f"{ref}"
     dataset['simulatedepth'] = depth
     dataset['threads'] = os.cpu_count() - 1
@@ -167,8 +193,6 @@ def reuse_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngml
 
     update_dataset(dataset)
     return dataset
-
-
 
 def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin",
                         error_model="P4C2", 
@@ -188,12 +212,6 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     sim_subdir = f"pbsim_{depth}"
     sim_dir = f"{ref_dir}/{sim_subdir}"
 
-    # if the directory already exists, skip read simulation.
-    if force:
-        if os.path.exists(sim_dir) and os.path.isdir(sim_dir) and len(os.listdir(sim_dir)) > 0:
-            print(f"Folder {sim_dir} exists and force=True, deleting folder)")
-            for file in os.listdir(sim_dir):
-                os.remove(f"{sim_dir}/{file}")
 
     dataset = dict()
     # map args to the dict. Easier to use
@@ -209,30 +227,58 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     #    echo ""
     # else:
     #     print(f"Folder {sim_dir} already exists, skipping reads simulation (delete folder contents to regenerate)")
+        # if the directory already exists, skip read simulation.
+
+
     if not(os.path.exists(sim_dir)):
         os.makedirs(sim_dir)
 
     ## then generate the SVs you want
-    sved_prefix = ""
+    ref_dir = os.path.abspath(os.path.dirname(ref))
+    ref_file = os.path.basename(ref)
+    sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
     if sv_type != SvType.NONE:
-        sved_prefix = generate_sv(ref, sim_subdir, sv_type, sv_nbr)
+        if not os.path.isfile(f"{sim_dir}/{sved_prefix}.fasta") or force:
+            generate_sv(ref, sim_subdir, sv_type, sv_nbr)
+        else:
+            print_okcyan("sv'ed reference already exists, reusing it")
         dataset['bed'] = f"{sim_dir}/{sved_prefix}.bed"
-        os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
-                        --hmm_model {error_model_file} \
-                        --depth {depth} \
-                        --difference-ratio {diff_ratio} \
-                        --length-mean {length_mean} \
-                        --length-sd {length_sd} \
-                        --accuracy-mean {accuracy_mean} \
-                        --prefix {sved_prefix} \
-                        {sved_prefix}.fasta
-                """)
+
+        files = os.listdir(sim_dir)
+        if force and os.path.exists(sim_dir) and os.path.isdir(sim_dir) and len(os.listdir(sim_dir)) > 0:
+                print_warning(f"Folder {sim_dir} exists and force=True, deleting related contant)")
+                fastq_files = [k for k in files if (k.startswith(sved_prefix) and k.endswith(".fastq"))]
+                ref_files = [k for k in files if (k.startswith(sved_prefix) and k.endswith(".ref"))]
+                maf_files = [k for k in files if (k.startswith(sved_prefix) and k.endswith(".maf"))]
+                for file in fastq_files + ref_files + maf_files:
+                    os.remove(f"{sim_dir}/{file}")
+
+        files = os.listdir(sim_dir)
+        fastq_files = [k for k in files if (k.startswith(sved_prefix) and k.endswith(".fastq"))]
+
+        if len(fastq_files) == 0 or force:
+            os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
+                            --hmm_model {error_model_file} \
+                            --depth {depth} \
+                            --difference-ratio {diff_ratio} \
+                            --length-mean {length_mean} \
+                            --length-sd {length_sd} \
+                            --accuracy-mean {accuracy_mean} \
+                            --prefix {sved_prefix} \
+                            {sved_prefix}.fasta
+                    """)
+        else:
+            print_okcyan("fastq files already exist, reusing them")
+    
     if chromosome_nbr == None:
         os.system(f""" cd {sim_dir} && cat *.fastq > {sved_prefix}.fastq""")
         dataset["read"] = f"{sim_dir}/{sved_prefix}.fastq"
 
 
     dataset['ref'] =  f"{ref}"
+
+    ## move data into directory
+
     # ref = f"sd_{chromosome_nbr:04}.ref" # the reference stays the reference; YOU DUMB FUCK
     #     dataset['read'] = f"{ref_dir}/{sved_prefix}_{chromosome_nbr:04}.fastq" # sved_reference_prefix contains already sim_subdir
     update_dataset(dataset)
@@ -244,36 +290,38 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
 
 def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/opt/intel/oneapi/vtune/2022.1.0/bin64/vtune", vtune_setvars="/opt/intel/oneapi/setvars.sh"):
     
-    if not(os.path.exists(dataset['output_dir']) and os.path.isdir(dataset['output_dir'])):
-        print(f"make folder: {dataset['output_dir']}")
-        os.makedirs(dataset['output_dir'])
-
     with open(dataset['read']) as f:
         count = sum(1 for _ in f)
         seqs = count/4
         print(f"{seqs} reads loaded.")
 
     start_time = time.time()
-
+    profile_output_path = f"{dataset['output_dir']}/r001hs-{dataset['output_filename']}"
+    cmd = ""
+    if (is_profiling) and os.path.isdir(profile_output_path):
+        print_warning("Running profiling while a profiling result already exists.\nDisabling profiling")
+        is_profiling = False
+    
     if (is_profiling):
         # note: os.system runs in shell "sh", for which "source" is not defined. We use "." instead.
         cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=medium \
             -app-working-dir "{dataset['output_dir']}" --app-working-dir="{dataset['output_dir']}" \
-            -result-dir "{dataset['output_dir']}/r001hs-{dataset['output_filename']}" \
+            -result-dir "{profile_output_path}" \
             -- \
             {git_dir}/bin/ngmlr-0.2.8/ngmlr \
             --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
             --subread-length {dataset['subsegment']} \
             -q "{dataset['read']}" -r "{dataset['ref']}" \
             -o "{dataset['output_dir']}/{dataset['output_filename']}"' """
-        print(cmd)
-        os.system(cmd)
     else:
-        os.system(f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
+        cmd = f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
             --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
             --subread-length {dataset['subsegment']} \
             -q {dataset['read']} -r {dataset['ref']} \
-            -o {dataset['output_dir']}/{dataset['output_filename']}""")
+            -o {dataset['output_dir']}/{dataset['output_filename']}"""
+    print(cmd)
+    os.system(cmd)
+
     end_time= time.time()
     runtime = end_time - start_time
     print(f"+++++ Clock time: {runtime}")

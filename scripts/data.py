@@ -14,6 +14,6 @@ lengths_mean = [25000, 30000, 35000, 40000, 50000, 60000]
 length_sd=7000
 depth=20
 chromosome_nbr=None
-force=True
+force=False
 
 subsegments = [256] # 128, 256, 384, 512, 768, 1024, 2048
