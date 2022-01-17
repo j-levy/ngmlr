@@ -1,6 +1,7 @@
 #/usr/bin/env python3
 
 from data import *
+import json
 
 for align_sv_type in sv_types:
     dataset = align.reuse_dataset(default_ref, sv_type=align_sv_type, sv_nbr=sv_nbr, length_mean=length_mean, length_sd=length_sd, depth=depth, chromosome_nbr=chromosome_nbr, force=force) 

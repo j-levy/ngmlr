@@ -117,8 +117,7 @@ def generate_sv_json(ref, sim_dir, sv_type, sv_nbr=10, conda_bin="$HOME/minicond
 
 def update_dataset(dataset):
     # add some pre-computed fields to the dict
-    basename_read = os.path.basename(dataset['read'])
-    basename_read = basename_read.replace(".fastq", "")
+    basename_read = os.path.basename(dataset['read']).replace(".fastq", "")
     basename_ref = os.path.basename(dataset['ref']).replace(".fasta", "")
     dataset['nickname'] = f"{dataset['nick']}-{basename_read}-{basename_ref}"
     dataset['gprof_filename'] = f"gprof.{dataset['nickname']}-{dataset['subsegment']}.txt"
@@ -260,7 +259,7 @@ def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/
         # note: os.system runs in shell "sh", for which "source" is not defined. We use "." instead.
         cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=medium \
             -app-working-dir "{dataset['output_dir']}" --app-working-dir="{dataset['output_dir']}" \
-            -result-dir "{dataset['output_dir']}/r001hs" \
+            -result-dir "{dataset['output_dir']}/r001hs-{dataset['output_filename']}" \
             -- \
             {git_dir}/bin/ngmlr-0.2.8/ngmlr \
             --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
