@@ -28,6 +28,8 @@ def print_warning(s):
 def print_okcyan(s):
     print(f"{bcolors.OKCYAN}{s}{bcolors.ENDC}")
 
+def print_error(s):
+    print(f"{bcolors.FAIL}{s}{bcolors.FAIL}")
 
 from enum import Enum
 class SvType(Enum):
@@ -40,7 +42,7 @@ class SvType(Enum):
     TRANS = "TRANSLOCATION" # translocation will be disabled at first
 
 # this function (should) work with release version of SURVIVOR.
-def generate_sv(ref, sim_subdir, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
+def generate_sv(ref, sim_dir, sv_type, sv_nbr=10, survivor_prefix="sv", conda_bin="$HOME/miniconda3/envs/ngmlr/bin"):
     survivor_template = f"""PARAMETER FILE: DO JUST MODIFY THE VALUES AND KEEP THE SPACES!
 DUPLICATION_minimum_length: 100
 DUPLICATION_maximum_length: 10000
@@ -69,16 +71,20 @@ INV_dup_number: 0"""
     ref_file = os.path.basename(ref)
 
     sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
-    output_prefix = f"{sim_subdir}/{sved_prefix}"
-    survivor_param = f"{ref_dir}/{output_prefix}.svr"
+    output_prefix = f"{sim_dir}/{sved_prefix}"
+    survivor_param = f"{sim_dir}/{sved_prefix}.svr"
+
     f = open(f"{survivor_param}", "w")
     f.write(survivor_template)
     f.close()
     snp_rate = 0
 
+    if not(os.path.exists(output_prefix)):
+        os.makedirs(output_prefix)
+
     # SURVIVOR simSV PATH/TO/REFERENCE.fasta PATH/TO/param.svr FREQUENCY_OF_SNP(0..1) 0(always using simulated reads) OUTPUT_PREFIX
-    print(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
-    res = os.system(f"""cd {ref_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {output_prefix}""")
+    print(f"""cd {sim_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {sved_prefix}/{survivor_prefix}""")
+    res = os.system(f"""cd {sim_dir} && {conda_bin}/SURVIVOR simSV {ref} {survivor_param} {snp_rate} 0 {sved_prefix}/{survivor_prefix}""")
     if res != 0:
         exit(1)
 
@@ -141,12 +147,18 @@ def update_dataset(dataset):
     dataset['output_dir']= os.path.abspath(f"out/{dataset['nickname']}/threads-{dataset['threads']}/")
     if not(os.path.exists(dataset['output_dir']) and os.path.isdir(dataset['output_dir'])):
         print_okcyan(f"make folder: {dataset['output_dir']}")
-        os.makedirs(dataset['output_dir'])
+        os.makedirs(dataset['output_dir'], exist_ok=True)
 
     basename_bed = os.path.basename(dataset['bed'])
     local_bed = f"{dataset['output_dir']}/{basename_bed}"
-    if os.path.isfile(dataset['bed']) and not os.path.isfile(local_bed):
-        shutil.copyfile(dataset['bed'], local_bed)
+    if local_bed != dataset['bed']:
+        if not os.path.isfile(dataset['bed']):
+            print_error(f"Cannot find bed file: {dataset['bed']}")
+            exit(255)
+        if os.path.isfile(local_bed):
+            os.remove(local_bed)
+        if os.path.isfile(dataset['bed']) and not os.path.isfile(local_bed):
+            shutil.copyfile(dataset['bed'], local_bed)
     dataset['bed'] = local_bed
 
 
@@ -207,7 +219,6 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     diff_ratio_name = "pacbio"
     diff_ratio = diff_ratios[diff_ratio_name]
     error_model_file = f"{git_dir()}/scripts/pbsim2_hmm_model/{error_model}.model"
-    prefix = "sd"
     ref_dir = os.path.abspath(os.path.dirname(ref))
     sim_subdir = f"pbsim_{depth}"
     sim_dir = f"{ref_dir}/{sim_subdir}"
@@ -223,26 +234,60 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     dataset['nick'] = ""
     dataset['max_sv_distance'] = 100
     dataset['conda_bin'] = conda_bin
-    #     if not(os.path.exists(sim_dir) and os.path.isdir(sim_dir)) or len(os.listdir(sim_dir)) == 0:
-    #    echo ""
-    # else:
-    #     print(f"Folder {sim_dir} already exists, skipping reads simulation (delete folder contents to regenerate)")
-        # if the directory already exists, skip read simulation.
-
 
     if not(os.path.exists(sim_dir)):
         os.makedirs(sim_dir)
 
-    ## then generate the SVs you want
     ref_dir = os.path.abspath(os.path.dirname(ref))
     ref_file = os.path.basename(ref)
+
+    if chromosome_nbr != None and isinstance(chromosome_nbr, int):
+        if sv_type != SvType.NONE:
+            sim_ref_dir = f"{sim_dir}/refs"
+            prefix = "sd"
+            if not(os.path.exists(sim_ref_dir)):
+                os.makedirs(sim_ref_dir)
+            files = os.listdir(sim_ref_dir)
+            if force and os.path.exists(sim_dir) and os.path.isdir(sim_ref_dir) and len(os.listdir(sim_ref_dir)) > 0:
+                    print_warning(f"Folder {sim_ref_dir} exists and force=True, deleting related contant)")
+                    fastq_files = [k for k in files if (k.startswith(prefix) and k.endswith(".fastq"))]
+                    ref_files = [k for k in files if (k.startswith(prefix) and k.endswith(".ref"))]
+                    maf_files = [k for k in files if (k.startswith(prefix) and k.endswith(".maf"))]
+                    for file in fastq_files + ref_files + maf_files:
+                        os.remove(f"{sim_ref_dir}/{file}")
+
+            files = os.listdir(sim_ref_dir)
+            ref_files = [k for k in files if (k.startswith(prefix) and k.endswith(".ref"))]
+
+            if len(ref_files) == 0 or force:
+                os.system(f""" cd {sim_ref_dir} && {conda_bin}/pbsim \
+                                --hmm_model {error_model_file} \
+                                --depth {depth} \
+                                --difference-ratio {diff_ratio} \
+                                --length-mean {length_mean} \
+                                --length-sd {length_sd} \
+                                --accuracy-mean {accuracy_mean} \
+                                --prefix {prefix} \
+                                {ref}
+                        """)
+            else:
+                print_okcyan("fastq files already exist, reusing them")
+            ref = f"{sim_ref_dir}/{prefix}_{chromosome_nbr:04}.ref"
+            ref_file = os.path.basename(ref)
+            ref_dir = os.path.abspath(os.path.dirname(ref))
+
+
+    ## then generate the SVs you want
     sved_prefix = f"{ref_file}_{sv_type.value}_{sv_nbr}"
+    survivor_prefix = sved_prefix
+
     if sv_type != SvType.NONE:
-        if not os.path.isfile(f"{sim_dir}/{sved_prefix}.fasta") or force:
-            generate_sv(ref, sim_subdir, sv_type, sv_nbr)
+        if not os.path.isfile(f"{sim_dir}/{sved_prefix}/{survivor_prefix}.fasta") or force:
+            generate_sv(ref, sim_dir, sv_type, sv_nbr, survivor_prefix)
         else:
             print_okcyan("sv'ed reference already exists, reusing it")
-        dataset['bed'] = f"{sim_dir}/{sved_prefix}.bed"
+        sim_dir = f"{sim_dir}/{sved_prefix}"
+        dataset['bed'] = f"{sim_dir}/{survivor_prefix}.bed"
 
         files = os.listdir(sim_dir)
         if force and os.path.exists(sim_dir) and os.path.isdir(sim_dir) and len(os.listdir(sim_dir)) > 0:
@@ -254,7 +299,7 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
                     os.remove(f"{sim_dir}/{file}")
 
         files = os.listdir(sim_dir)
-        fastq_files = [k for k in files if (k.startswith(sved_prefix) and k.endswith(".fastq"))]
+        fastq_files = [k for k in files if (k.startswith(survivor_prefix) and k.endswith(".fastq"))]
 
         if len(fastq_files) == 0 or force:
             os.system(f""" cd {sim_dir} && {conda_bin}/pbsim \
@@ -264,16 +309,17 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
                             --length-mean {length_mean} \
                             --length-sd {length_sd} \
                             --accuracy-mean {accuracy_mean} \
-                            --prefix {sved_prefix} \
-                            {sved_prefix}.fasta
+                            --prefix {survivor_prefix} \
+                            {survivor_prefix}.fasta
                     """)
         else:
             print_okcyan("fastq files already exist, reusing them")
     
     if chromosome_nbr == None:
-        os.system(f""" cd {sim_dir} && cat *.fastq > {sved_prefix}.fastq""")
-        dataset["read"] = f"{sim_dir}/{sved_prefix}.fastq"
-
+        os.system(f""" cd {sim_dir} && cat *.fastq > {survivor_prefix}.fastq""")
+        dataset["read"] = f"{sim_dir}/{survivor_prefix}.fastq"
+    else:
+        dataset["read"] = f"{sim_dir}/{survivor_prefix}_{chromosome_nbr:04}.fastq"
 
     dataset['ref'] =  f"{ref}"
 

@@ -14,7 +14,7 @@ for align_sv_type in sv_types:
         dataset["nick"] = f"{length_mean}"
         align.update_dataset(dataset)
         print(json.dumps(dataset, indent=4))
-        align.align(align.git_dir(), dataset, is_profiling=True)
+        align.align(align.git_dir(), dataset, is_profiling)
         align.bam_convert(dataset)
         align.sv_call(dataset)
         align.eval(dataset)
