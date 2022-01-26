@@ -1,16 +1,22 @@
 #/usr/bin/env python3
 
 from data import *
-import json
+import json, os
+
+# recompile
+
+os.chdir(f"{align.git_dir()}/bld")
+os.system("rm -r *")
+os.system("cmake .. && cmake --build . -j6")
 
 for align_sv_type in sv_types:
     dataset = align.generate_dataset(default_ref, sv_type=align_sv_type, sv_nbr=sv_nbr, length_mean=length_mean, length_sd=length_sd, depth=depth, chromosome_nbr=chromosome_nbr, force=force)
-    dataset["snifflescoverage"] = 5
+    dataset["snifflescoverage"] = 3
 
     for subsegment in subsegments:
         print(f"Running with subsegment length {subsegment}\n")
         dataset["subsegment"] = subsegment
-        dataset['max_sv_distance'] = 100
+        dataset['max_sv_distance'] = 10
         dataset["nick"] = f"{length_mean}"
         align.update_dataset(dataset)
         print(json.dumps(dataset, indent=4))

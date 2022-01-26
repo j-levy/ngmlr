@@ -7,13 +7,13 @@ import align
 
 default_ref = "/media/DataXFS/ngmlr_data/Genomes/s_cerevisiae/s_cerevisiae.fasta"
 
-sv_types = [align.SvType.DUP, align.SvType.INV, align.SvType.INDEL] #, align.SvType.INV, align.SvType.INVDEL, align.SvType.INVDUP] # , align.SvType.TRANS 
-sv_nbr=8
+sv_types = [align.SvType.DUP] #, align.SvType.INV, align.SvType.INDEL] #, align.SvType.INV, align.SvType.INVDEL, align.SvType.INVDUP] # , align.SvType.TRANS 
+sv_nbr=20
 length_mean=9000
 lengths_mean = [25000, 30000, 35000, 40000, 50000, 60000]
 length_sd=7000
-depth=40
-chromosome_nbr=1
+depth=10
+chromosome_nbr=None
 force=False
 is_profiling = False
 
