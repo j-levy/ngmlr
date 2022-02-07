@@ -227,7 +227,7 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
     dataset = dict()
     # map args to the dict. Easier to use
     dataset['simulatedepth'] = depth
-    dataset['threads'] = os.cpu_count() - 1
+    dataset['threads'] = os.cpu_count()
     dataset['snifflescoverage'] = math.ceil(depth/4)
     dataset['subsegment'] = 256
     dataset['optimize'] = "pacbio"
@@ -334,7 +334,7 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
 
 
 
-def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/opt/intel/oneapi/vtune/2022.1.0/bin64/vtune", vtune_setvars="/opt/intel/oneapi/setvars.sh"):
+def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/opt/intel/oneapi/vtune/latest/bin64/vtune", vtune_setvars="/opt/intel/oneapi/setvars.sh"):
     
     with open(dataset['read']) as f:
         count = sum(1 for _ in f)
@@ -342,7 +342,8 @@ def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/
         print(f"{seqs} reads loaded.")
 
     start_time = time.time()
-    profile_output_path = f"{dataset['output_dir']}/r001hs-{dataset['output_filename']}"
+    t = time.asctime().replace(":", "_").replace(" ", "_")
+    profile_output_path = f"{dataset['output_dir']}/{t}-{dataset['output_filename']}"
     cmd = ""
     if (is_profiling) and os.path.isdir(profile_output_path):
         print_warning("Running profiling while a profiling result already exists.\nDisabling profiling")
@@ -350,7 +351,7 @@ def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/
     
     if (is_profiling):
         # note: os.system runs in shell "sh", for which "source" is not defined. We use "." instead.
-        cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=medium \
+        cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=short \
             -app-working-dir "{dataset['output_dir']}" --app-working-dir="{dataset['output_dir']}" \
             -result-dir "{profile_output_path}" \
             -- \
