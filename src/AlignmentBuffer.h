@@ -38,6 +38,50 @@ static bool sortAnchorOnRef(Anchor a, Anchor b) {
 }
 
 
+// these are helper functions that are used in BatchBuffer too.
+// they were in AlignmentBuffer.cpp, but they are also used in AlignmentBatchBuffer.cpp
+static void sortRead(ReadGroup * group) {
+
+	MappedRead * read = group->fullRead;
+
+	float highestScore = 0.0f;
+	int highestScoreIndex = 0;
+	for (int i = 0; i < read->Calculated; ++i) {
+		if (read->Alignments[i].Score > highestScore) {
+			highestScore = read->Alignments[i].Score;
+			highestScoreIndex = i;
+		}
+	}
+	if (highestScoreIndex != 0) {
+		Align tmp = read->Alignments[0];
+		read->Alignments[0] = read->Alignments[highestScoreIndex];
+		read->Alignments[highestScoreIndex] = tmp;
+
+		LocationScore tmpScore = read->Scores[0];
+		read->Scores[0] = read->Scores[highestScoreIndex];
+		read->Scores[highestScoreIndex] = tmpScore;
+	}
+}
+
+static bool sortIntervalsInSegment(Interval const * a, Interval const * b) {
+	return a->onReadStart < b->onReadStart;
+}
+
+static bool sortIntervalsByScore(Interval const * a, Interval const * b) {
+	return a->score > b->score;
+}
+
+static bool satisfiesConstraints(Align * align, int const readLength) {
+	//TODO: check threshold
+	static float minResidues = 50.0f;//Config.getMinResidues();
+	static float minIdentity = Config.getMinIdentity();
+
+	if (minResidues <= 1.0f) {
+		minResidues = readLength * minResidues;
+	}
+	return (align->Score > 0.0f) && (align->Identity >= minIdentity) && ((float) (readLength - align->QStart - align->QEnd) >= minResidues);
+}
+
 class AlignmentBuffer {
 
 protected:

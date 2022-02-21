@@ -859,13 +859,6 @@ bool AlignmentBuffer::isDuplication(Interval const * a,
 			&& overlapOnRead <= (int) (readPartLength * 1.0f) && overlapDiff > 0ll; // overlapDiff > (int)round(readPartLength / 2.0);
 }
 
-bool sortIntervalsInSegment(Interval const * a, Interval const * b) {
-	return a->onReadStart < b->onReadStart;
-}
-
-bool sortIntervalsByScore(Interval const * a, Interval const * b) {
-	return a->score > b->score;
-}
 
 /**
  * - Sort sub-reads by read position
@@ -1775,17 +1768,6 @@ int AlignmentBuffer::realign(int const svTypeDetected,
 	return svTypeResult;
 }
 
-bool satisfiesConstraints(Align * align, int const readLength) {
-	//TODO: check threshold
-	static float minResidues = 50.0f;//Config.getMinResidues();
-	static float minIdentity = Config.getMinIdentity();
-
-	if (minResidues <= 1.0f) {
-		minResidues = readLength * minResidues;
-	}
-	return (align->Score > 0.0f) && (align->Identity >= minIdentity) && ((float) (readLength - align->QStart - align->QEnd) >= minResidues);
-}
-
 
 void AlignmentBuffer::alignSingleOrMultipleIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int & alignIndex) {
 
@@ -2306,29 +2288,6 @@ bool AlignmentBuffer::reconcileRead(ReadGroup * group) {
 		verbose(0, true, "%s (%d) mapped %f with %d fragments", read->name, read->length, aligned * 100.0f, segmentCount);
 	}
 	return mapped;
-}
-
-void sortRead(ReadGroup * group) {
-
-	MappedRead * read = group->fullRead;
-
-	float highestScore = 0.0f;
-	int highestScoreIndex = 0;
-	for (int i = 0; i < read->Calculated; ++i) {
-		if (read->Alignments[i].Score > highestScore) {
-			highestScore = read->Alignments[i].Score;
-			highestScoreIndex = i;
-		}
-	}
-	if (highestScoreIndex != 0) {
-		Align tmp = read->Alignments[0];
-		read->Alignments[0] = read->Alignments[highestScoreIndex];
-		read->Alignments[highestScoreIndex] = tmp;
-
-		LocationScore tmpScore = read->Scores[0];
-		read->Scores[0] = read->Scores[highestScoreIndex];
-		read->Scores[highestScoreIndex] = tmpScore;
-	}
 }
 
 int AlignmentBuffer::getOverlapOnRead(Interval const * a, Interval const * b) {
