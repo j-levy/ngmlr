@@ -10,7 +10,7 @@
 
 #include "NGM.h"
 #include "Timing.h"
-#include "AlignmentBuffer.h"
+#include "AlignmentBatchBuffer.h"
 
 #undef module_name
 #define module_name "CS"
@@ -274,7 +274,7 @@ int CS::CollectResultsFallback(MappedRead * read) {
 }
 
 void CS::SendToBuffer(MappedRead * read, ScoreBuffer * sw,
-		AlignmentBuffer * out) {
+		AlignmentBatchBuffer * out) {
 
 	if (read == 0)
 		return;
@@ -293,6 +293,7 @@ void CS::SendToBuffer(MappedRead * read, ScoreBuffer * sw,
 			read->group->readsFinished += 1;
 
 			if (read->group->readsFinished == read->group->readNumber) {
+				fprintf(stderr, "Current sub-read does not have mapping locations\n");
 				out->processLongReadLIS(read->group);
 			}
 		} else {
@@ -322,7 +323,7 @@ void CS::Cleanup() {
 }
 
 int CS::RunRead(MappedRead * currentRead, PrefixIterationFn pFunc,
-		ScoreBuffer * sw, AlignmentBuffer * out) {
+		ScoreBuffer * sw, AlignmentBatchBuffer * out) {
 
 	int nScoresSum = 0;
 
@@ -397,14 +398,18 @@ int CS::RunRead(MappedRead * currentRead, PrefixIterationFn pFunc,
 	return nScoresSum;
 }
 
-int CS::RunBatch(ScoreBuffer * sw, AlignmentBuffer * out) {
+int CS::RunBatch(ScoreBuffer * sw, AlignmentBatchBuffer * out) {
 	PrefixIterationFn pFunc = &CS::PrefixSearch;
 
 	int nScoresSum = 0;
 	for (size_t i = 0; i < m_CurrentBatch.size(); ++i) {
 
 		MappedRead * currentRead = m_CurrentBatch[i];
-		nScoresSum += RunRead(currentRead, pFunc, sw, out);
+
+		int nScore = RunRead(currentRead, pFunc, sw, out);
+		nScoresSum += nScore;
+		// fprintf(stderr, "read #%d (from batch in thread %d)\tscore = %d\tscoreSum=%d\n", i, m_TID, nScore, nScoresSum);
+
 	}
 	return nScoresSum;
 }
@@ -415,7 +420,7 @@ void CS::DoRun() {
 	NGM.AquireOutputLock();
 	oclAligner = NGM.CreateAlignment(0);
 
-	alignmentBuffer = new AlignmentBuffer(Config.getOutputFile());
+	alignmentBuffer = new AlignmentBatchBuffer(Config.getOutputFile());
 	ScoreBuffer * scoreBuffer = new ScoreBuffer(oclAligner, alignmentBuffer);
 	NGM.ReleaseOutputLock();
 
@@ -441,6 +446,7 @@ void CS::DoRun() {
 	m_RefProvider = NGM.GetRefProvider(m_TID);
 	AllocRefEntryChain();
 	while (NGM.ThreadActive(m_TID, GetStage()) && ((m_CurrentBatch = NGM.GetNextReadBatch(m_BatchSize)), (m_CurrentBatch.size() > 0))) {
+		// fprintf(stderr, "\tthread %d fetches %d reads now\n", m_TID, m_BatchSize);
 		Log.Debug(LOG_CS_DETAILS, "CS Thread %i got batch (len %i)", m_TID, m_CurrentBatch.size());
 //		Log.Message("CS Thread %i got batch %d (len %i)", m_TID, ++batchId, m_CurrentBatch.size());
 

@@ -32,6 +32,7 @@ add_executable(ngmlr
 					NGM.cpp
 					NGMTask.cpp
 					AlignmentBuffer.cpp
+					AlignmentBatchBuffer.cpp
 					PrefixTable.cpp														
 					ReadProvider.cpp
 					SamParser.cpp

@@ -10,7 +10,7 @@
 #include "NGMTask.h"
 #include "Timing.h"
 #include "CS.h"
-#include "AlignmentBuffer.h"
+#include "AlignmentBatchBuffer.h"
 #include "StrippedSW.h"
 
 float const MAX_MQ = 60.0f;
@@ -93,6 +93,7 @@ void ScoreBuffer::DoRun() {
 		//Prepare for score computation
 		for (int i = 0; i < iScores; ++i) {
 			MappedRead * cur_read = scores[i].read;
+			// fprintf(stderr, "mapped read length %d reached ScoreBuffer::DoRun (addinfo: %s)\n", scores[i].read->length, scores[i].read->AdditionalInfo);
 			int scoreId = scores[i].scoreId;
 
 			//Initialize buffers for score computation
@@ -127,6 +128,7 @@ void ScoreBuffer::DoRun() {
 
 		if (res != iScores)
 		Log.Error("Kernel couldn't calculate all scores (%i out of %i)", res, iScores);
+		// fprintf(stderr, "%s: iScores=%d (batch size=%d, res=%d)\n", __PRETTY_FUNCTION__, iScores, this->swBatchSize, res);
 
 		//Process results
 		for (int i = 0; i < iScores; ++i) {
@@ -152,7 +154,7 @@ void ScoreBuffer::DoRun() {
 				if(group != 0) {
 					//If all reads from group are finished
 					if(group->readsFinished == group->readNumber) {
-						out->processLongReadLIS(group);
+						out->enqueueLongReadLIS(group);
 //					out->WriteRead(group->fullRead, false);
 					}
 				} else {

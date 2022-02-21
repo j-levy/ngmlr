@@ -9,7 +9,7 @@
 
 #include "IAlignment.h"
 #include "NGM.h"
-#include "AlignmentBuffer.h"
+#include "AlignmentBatchBuffer.h"
 
 #undef module_name
 #define module_name "FILTER"
@@ -48,14 +48,14 @@ private:
 
 	IAlignment * aligner;
 
-	AlignmentBuffer * out;
+	AlignmentBatchBuffer * out;
 	const int swBatchSize;
 
 	float scoreTime;
 
 public:
 
-	ScoreBuffer(IAlignment * mAligner, AlignmentBuffer * mOut) :
+	ScoreBuffer(IAlignment * mAligner, AlignmentBatchBuffer * mOut) :
 			aligner(mAligner), out(mOut), swBatchSize(aligner->GetScoreBatchSize()) {
 
 		m_QryBuffer = 0;

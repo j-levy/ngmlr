@@ -75,11 +75,11 @@ protected:
 	int CollectResultsFallback(MappedRead* read);
 	void FilterScore(LocationScore* score);
 	void CheckFallback();
-	virtual int RunBatch(ScoreBuffer * sw, AlignmentBuffer * out);
+	virtual int RunBatch(ScoreBuffer * sw, AlignmentBatchBuffer * out);
 	int RunRead(MappedRead * currentRead, PrefixIterationFn pFunc,
-			ScoreBuffer * sw, AlignmentBuffer * out);
+			ScoreBuffer * sw, AlignmentBatchBuffer * out);
 	void SendToBuffer(MappedRead* read, ScoreBuffer * sw,
-			AlignmentBuffer * out);
+			AlignmentBatchBuffer * out);
 
 	void AllocRefEntryChain();
 
@@ -125,7 +125,7 @@ private:
 	LocationScore * tmp;
 	int tmpSize;
 	IAlignment * oclAligner;
-	AlignmentBuffer * alignmentBuffer;
+	AlignmentBatchBuffer * alignmentBuffer;
 
 public:
 

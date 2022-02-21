@@ -40,7 +40,7 @@ static bool sortAnchorOnRef(Anchor a, Anchor b) {
 
 class AlignmentBuffer {
 
-private:
+protected:
 
 	struct Alignment {
 		MappedRead * read;
