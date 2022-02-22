@@ -27,7 +27,7 @@ private:
 
 	void topNSE(MappedRead* read);
 
-	void DoRun();
+	void DoRun(bool is_flushing);
 	void computeMQ(MappedRead* read);
 	int computeMQ(float bestScore, float secondBestScore);
 

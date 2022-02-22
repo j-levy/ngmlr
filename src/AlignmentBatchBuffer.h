@@ -14,7 +14,7 @@ class AlignmentBatchBuffer : public AlignmentBuffer
 	ReadGroup** longReadBatch;
 
 public:
-	AlignmentBatchBuffer(const char* const filename, const int longReadBatchSize = 1000) :
+	AlignmentBatchBuffer(const char* const filename, const int longReadBatchSize = 1400) :
             AlignmentBuffer(filename),
             longReadBatchSize(longReadBatchSize)/*, maxIntervalNumberPerKb(Config.getMaxSegmentNumberPerKb())*/
     {

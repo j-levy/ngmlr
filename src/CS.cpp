@@ -452,7 +452,7 @@ void CS::DoRun() {
 
 		int nCRMsSum = RunBatch(scoreBuffer, alignmentBuffer);
 		Log.Verbose("CS Thread %i flushing scoreBuffer for batch %d", m_TID, batchId);
-		scoreBuffer->flush();
+		// scoreBuffer->flush(); // NOTE: now flushing means clearing the batch, so let's put it at the end.
 
 		float elapsed = tmr.ET();
 		Log.Debug(LOG_CS_DETAILS, "CS Thread %i finished batch (len %i) with %i overflows, length %d (elapsed: %.3fs)", m_TID, m_CurrentBatch.size(), m_Overflows, c_SrchTableBitLen, elapsed);
@@ -497,7 +497,8 @@ void CS::DoRun() {
 		}
 		m_Overflows = 0;
 	}
-
+	scoreBuffer->flush();
+	
 	delete scoreBuffer;
 	scoreBuffer = 0;
 	delete alignmentBuffer;

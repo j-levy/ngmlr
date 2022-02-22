@@ -123,7 +123,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
 
 
     int i = 0;
-    for(i = 0; i < this->longReadBatchSize; i++)
+    for(i = 0; i < this->longReadBatchIndex; i++)
     {
         ReadGroup * group = this->longReadBatch[i];  
         
@@ -749,6 +749,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
         verbose(0, true, "");
 
     }
+    this->longReadBatchIndex = 0;
     fprintf(stderr, "\tbatch processed YAY\n");
 }
 

@@ -84,7 +84,7 @@ ReadGroup* ScoreBuffer::updateGroupInfo(MappedRead* cur_read) {
 	return group;
 }
 
-void ScoreBuffer::DoRun() {
+void ScoreBuffer::DoRun(bool is_flushing=false) {
 
 	if (iScores != 0) {
 		Log.Debug(16, "INFO\tSCORES\tSubmitting %d score computations.", iScores);
@@ -163,6 +163,9 @@ void ScoreBuffer::DoRun() {
 
 			}
 		}
+		if (is_flushing)
+			out->processLongReadBatchLIS();
+
 		scoreTime += tmr.ET();
 	} else {
 		Log.Debug(16, "INFO\tSCORES\tEmpty buffer submitted.");
@@ -289,7 +292,7 @@ void ScoreBuffer::scoreShortRead(MappedRead * read) {
 
 void ScoreBuffer::flush() {
 	//Force submitting remaining computation from buffer to CPU/GPU
-	DoRun();
+	DoRun(true);
 	iScores = 0;
 //	out->flush();
 }
