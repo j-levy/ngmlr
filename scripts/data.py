@@ -18,3 +18,5 @@ force=False
 is_profiling = False
 
 subsegments = [256] # 128, 256, 384, 512, 768, 1024, 2048
+# args = ["--verbose", "--no-progress"]
+args = []

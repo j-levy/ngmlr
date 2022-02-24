@@ -334,7 +334,7 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
 
 
 
-def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/opt/intel/oneapi/vtune/latest/bin64/vtune", vtune_setvars="/opt/intel/oneapi/setvars.sh"):
+def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/opt/intel/oneapi/vtune/latest/bin64/vtune", vtune_setvars="/opt/intel/oneapi/setvars.sh", args=[]):
     
     with open(dataset['read']) as f:
         count = sum(1 for _ in f)
@@ -355,18 +355,18 @@ def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/
             -app-working-dir "{dataset['output_dir']}" --app-working-dir="{dataset['output_dir']}" \
             -result-dir "{profile_output_path}" \
             -- \
-            {git_dir}/bin/ngmlr-0.2.8/ngmlr \
+            {git_dir}/bin/ngmlr-0.2.8-debug/ngmlr \
             --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
             --subread-length {dataset['subsegment']} \
             -q "{dataset['read']}" -r "{dataset['ref']}" \
             -o "{dataset['output_dir']}/{dataset['output_filename']}"' """
     else:
-        cmd = f"""{git_dir}/bin/ngmlr-0.2.8/ngmlr \
+        cmd = f"""{git_dir}/bin/ngmlr-0.2.8-debug/ngmlr \
             --bam-fix -x {dataset['optimize']} -t {dataset['threads']} \
             --subread-length {dataset['subsegment']} \
             -q {dataset['read']} -r {dataset['ref']} \
-            -o {dataset['output_dir']}/{dataset['output_filename']}"""
-    print(cmd)
+            -o {dataset['output_dir']}/{dataset['output_filename']} {" ".join(args)}"""
+    print_okcyan(cmd)
     os.system(cmd)
 
     end_time= time.time()
@@ -380,6 +380,7 @@ def bam_convert(dataset):
     output_file_path = f"{dataset['output_dir']}/{dataset['output_filename']}"
     os.system(f"{conda_bin}/samtools view -o {output_file_path}.bam {output_file_path}")
     os.system(f"{conda_bin}/samtools sort -o  {output_file_path}.sort.bam  {output_file_path}.bam")
+    os.system(f"{conda_bin}/samtools sort -o {output_file_path}.sort.sam {output_file_path}")
     os.system(f"{conda_bin}/samtools index  {output_file_path}.sort.bam")
 
 def sv_call(dataset):
