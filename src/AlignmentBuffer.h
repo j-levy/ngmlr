@@ -82,6 +82,86 @@ static bool satisfiesConstraints(Align * align, int const readLength) {
 	return (align->Score > 0.0f) && (align->Identity >= minIdentity) && ((float) (readLength - align->QStart - align->QEnd) >= minResidues);
 }
 
+
+static CorridorLine * getCorridorOriginal(int const corridor, char const * readSeq,
+		int & corridorHeight) {
+	int const corridorWidth = corridor;
+	int const qryLen = strlen(readSeq);
+
+	corridorHeight = qryLen;
+	CorridorLine * corridorLines = new CorridorLine[corridorHeight];
+
+	NGM.Stats->corridorLen += corridorWidth;
+	for (int i = 0; i < corridorHeight; ++i) {
+		corridorLines[i].offset = i; // - corridorWidth / 2;
+		corridorLines[i].length = corridorWidth;
+	}
+	return corridorLines;
+}
+
+static CorridorLine * getCorridorLinear(int const corridor, char const * readSeq,
+		int & corridorHeight) {
+	int const corridorWidth = corridor;
+	int const qryLen = strlen(readSeq);
+
+	corridorHeight = qryLen;
+	CorridorLine * corridorLines = new CorridorLine[corridorHeight];
+
+	NGM.Stats->corridorLen += corridorWidth;
+	for (int i = 0; i < corridorHeight; ++i) {
+		corridorLines[i].offset = i - corridorWidth / 2;
+		corridorLines[i].length = corridorWidth;
+	}
+	return corridorLines;
+}
+
+static CorridorLine * getCorridorFull(int const corridor, char const * readSeq,
+		int & corridorHeight) {
+	int const corridorWidth = corridor;
+	int const qryLen = strlen(readSeq);
+
+	corridorHeight = qryLen;
+	CorridorLine * corridorLines = new CorridorLine[corridorHeight];
+
+	NGM.Stats->corridorLen += corridorWidth;
+	for (int i = 0; i < corridorHeight; ++i) {
+		/**
+		 * 20% corridor width added on both sides for
+		 * ConvexAlign "out of corridor" detection
+		 * (Checks if backtracking path goes into
+		 * the left/right most 10% of the corridor)
+		 * TODO: fix in ConvexAlign.cpp
+		 */
+		corridorLines[i].offset = (int)(corridorWidth * -0.2);
+		corridorLines[i].length = corridorWidth + (int)(corridorWidth * 0.2);
+	}
+	return corridorLines;
+}
+
+static CorridorLine * getCorridorEndpoints(Interval const * interval,
+		int const corridor, char const * refSeq, char const * readSeq,
+		int & corridorHeight, bool const realign) {
+	int corridorWidth = corridor / (realign ? 1 : 4);
+	int const qryLen = strlen(readSeq);
+	int const refLen = strlen(refSeq);
+
+	corridorHeight = qryLen;
+	CorridorLine * corridorLines = new CorridorLine[corridorHeight];
+
+	float k = qryLen * 1.0f / refLen;
+	float d = corridorWidth / 2.0f;
+
+	NGM.Stats->corridorLen += corridorWidth;
+	for (int i = 0; i < corridorHeight; ++i) {
+		corridorLines[i].offset = (i - d) / k;
+		corridorLines[i].length = corridorWidth;
+	}
+
+	return corridorLines;
+}
+
+
+
 class AlignmentBuffer {
 
 protected:
