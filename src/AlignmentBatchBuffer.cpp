@@ -23,15 +23,359 @@ void AlignmentBatchBuffer::enqueueLongReadLIS(ReadGroup* group)
 	}
 }
 
+Align * AlignmentBatchBuffer::computeBatchAlignment(Interval const * interval,
+		int corridor, char const * const readSeq, size_t const readLength,
+		int const externalQStart, int const externalQEnd, int fullReadLength,
+		MappedRead const * const read, bool realign, bool const fullAlignment,
+		bool const shortRead = false) {
+
+	if (pacbioDebug) {
+		Log.Message("Read name: %s", read->name);
+		Log.Message("Alignment type: realign %d, full %d, shortRead %d", realign, fullAlignment, shortRead);
+	}
+
+	if(readSeq == nullptr) {
+		return 0;
+	}
+
+	static int alignmentId = 0;
+
+	bool validAlignment = false;
+
+	Align * align = new Align();
+	try {
+
+	#ifdef TEST_ALIGNER
+		Align * alignFast = new Align();
+	#endif
+
+		int refSeqLen = 0;
+		char const * refSeq = extractReferenceSequenceForAlignment(interval, refSeqLen);
+
+		int alignedBp = 0;
+
+		if (refSeq != 0) {
+
+			int retryCount = 5;
+			if (fullAlignment) {
+				retryCount = 1;
+			}
+
+			// Corridor > refSeqLen * 2 doesn't make sense -> full matrix is computed already
+			int const maxCorridorSize = refSeqLen * 2;
+			corridor = std::min(corridor, maxCorridorSize);
+
+			int const minAlignedBp = 0.05f * std::min((int) readLength, refSeqLen);
+
+			//initialize arrays for CIGAR and MD string
+			align->maxBufferLength = readLength * 4;
+			align->maxMdBufferLength = readLength * 4;
+			align->pBuffer1 = new char[align->maxBufferLength];
+			align->pBuffer2 = new char[align->maxMdBufferLength];
+			align->pBuffer1[0] = '\0';
+			align->pBuffer2[0] = '\0';
+			align->nmPerPostionLength = (readLength + 1) * 2;
+			align->nmPerPosition = new PositionNM[align->nmPerPostionLength];
+
+	#ifdef TEST_ALIGNER
+			alignFast->pBuffer1 = new char[readLength * 4];
+			alignFast->pBuffer2 = new char[readLength * 4];
+			alignFast->pBuffer1[0] = '\0';
+			alignFast->pBuffer2[0] = '\0';
+			alignFast->nmPerPostionLength = (readLength + 1) * 2;
+			alignFast->nmPerPosition = new PositionNM[alignFast->nmPerPostionLength];
+
+	#endif
+
+
+			int corridorMultiplier = 1;
+			while (!validAlignment
+					&& (corridor * corridorMultiplier) <= maxCorridorSize
+					&& retryCount-- > 0) {
+
+				//Local alignment
+				if (pacbioDebug) {
+					Log.Message("Aligning %d bp to %d bp", readLength, refSeqLen);
+					Log.Message("Ref: %.*s ... %.*s", 250, refSeq, 250, refSeq + refSeqLen - 250);
+					Log.Message("Read: %.*s ... %.*s", 250, readSeq, 250, readSeq - readLength - 250);
+				}
+
+				int corridorHeight = 0;
+				//			CorridorLine * corridorLines = getCorridorLinear(corridor, readSeq,
+				//					corridorHeight);
+				// When realigning currently there are no anchors available -> larger corridor
+				//TODO: Use anchors from original interval, or extract anchors from first alignment!
+				CorridorLine * corridorLines = 0;
+				if(fullAlignment) {
+					corridorLines = getCorridorFull(refSeqLen, readSeq,
+							corridorHeight);
+				} else {
+					if(shortRead) {
+						verbose(0, true, "Corridor width: %d", corridor * corridorMultiplier);
+						corridorLines = getCorridorLinear(corridor * corridorMultiplier, readSeq,
+								corridorHeight);
+					} else {
+						if(corridorMultiplier < 3 && !realign && interval->anchorLength > 0) {
+							corridorLines = getCorridorEndpointsWithAnchors(interval,
+									corridorMultiplier, refSeq, readSeq, corridorHeight, externalQStart, readPartLength, fullReadLength, realign);
+						} else {
+							verbose(0, true, "Corridor width: %d", corridor * corridorMultiplier);
+							corridorLines = getCorridorEndpoints(interval,
+									corridor * corridorMultiplier, refSeq, readSeq, corridorHeight, realign);
+						}
+					}
+				}
+
+				Timer algnTimer;
+				algnTimer.ST();
+
+				if (stdoutPrintAlignCorridor) {
+
+					for(int x = 0; x < interval->anchorLength; ++x) {
+						if(interval->anchors[x].isReverse) {
+							printf("%d\t%d\t%lld\t%d\t%d\n", alignmentId, read->ReadId, interval->anchors[x].onRef - interval->onRefStart,
+									fullReadLength - interval->anchors[x].onRead - (readPartLength) - externalQStart, 3);
+						} else {
+							printf("%d\t%d\t%lld\t%d\t%d\n", alignmentId, read->ReadId, interval->anchors[x].onRef - interval->onRefStart,
+									interval->anchors[x].onRead - externalQStart, 3);
+						}
+					}
+					printf("%d\t%d\t%d\t%s\t%d\n", alignmentId, read->ReadId, read->ReadId,
+							read->name, -4);
+					printf("%d\t%d\t%d\t%d\t%d\n", alignmentId, read->ReadId, interval->isReverse,
+							corridorLines[0].length, -5);
+					printf("%d\t%d\t%d\t%d\t%d\n", alignmentId, read->ReadId, externalQStart,
+							externalQEnd, -6);
+
+				}
+
+				if(pacbioDebug) {
+					int cellCount = 0;
+					for(int i = 0; i < corridorHeight; ++i) {
+						cellCount += corridorLines[i].length;
+					}
+					Log.Message("Computing %d cells of alignment Matrix", cellCount);
+				}
+
+				//Hack to pass readId to convex alignment class for plotting
+				//TODO: remove
+				align->svType = read->ReadId;
+
+				#ifdef TEST_ALIGNER
+					alignFast->svType = read->ReadId;
+				#endif
+
+	#ifdef TEST_ALIGNER
+				Timer tmr1;
+				tmr1.ST();
+	#endif
+
+
+				if(pacbioDebug) {
+					Log.Message("ExternalQstart: %d, ExternalQEnd: %d", externalQStart, externalQEnd);
+				}
+				int cigarLength = aligner->SingleAlign(alignmentId, corridorLines,
+						corridorHeight, (char const * const ) refSeq,
+						(char const * const ) readSeq, *align, externalQStart, externalQEnd, 0);
+//				cigarLength = -1;
+
+	#ifdef TEST_ALIGNER
+				float time1 = tmr1.ET();
+				Timer tmr2;
+				tmr2.ST();
+				int const cigarLengthFast = alignerFast->SingleAlign(alignmentId, corridorLines,
+						corridorHeight, (char const * const ) refSeq,
+						(char const * const ) readSeq, *alignFast, externalQStart, externalQEnd, 0);
+
+				float time2 = tmr2.ET();
+
+				Log.Message("%d/%d bp: %f - %f", strlen(refSeq), strlen(readSeq), time1, time2);
+
+				if(!(cigarLengthFast == cigarLength && alignFast->Score == align->Score && strcmp(align->pBuffer1, alignFast->pBuffer1) == 0 && strcmp(align->pBuffer2, alignFast->pBuffer2) == 0)) {
+					Log.Message("Ref:  %s", refSeq);
+					Log.Message("Read: %s", readSeq);
+					Log.Message("Convex:     %d %f %s", cigarLength, align->Score, align->pBuffer1);
+					Log.Message("ConvexFast: %d %f %s", cigarLengthFast, alignFast->Score, alignFast->pBuffer1);
+					Log.Error("Not equal");
+				}
+	#endif
+
+				alignmentId += 1;
+
+				if (pacbioDebug) {
+					Log.Message("Aligning took %f seconds", algnTimer.ET());
+					Log.Message("CIGAR: %.*s", 250, align->pBuffer1);
+					Log.Message("MD:    %.*s", 250, align->pBuffer2);
+				}
+				delete[] corridorLines;
+				corridorLines = 0;
+
+				alignedBp = readLength - (align->QStart - externalQStart) - (align->QEnd - externalQEnd);
+
+				validAlignment = cigarLength == fullReadLength; // && alignedBp > minAlignedBp;
+
+				if(!validAlignment) {
+					//corridor = corridor * 2;
+					corridorMultiplier += 1;
+					if (pacbioDebug) {
+						Log.Message("Invalid alignment found. Running again with corridor %d, %d attempts left", corridor * corridorMultiplier, retryCount);
+					}
+					NGM.Stats->invalidAligmentCount += 1;
+				}
+			}
+			delete[] refSeq;
+			refSeq = 0;
+
+			#ifdef TEST_ALIGNER
+				delete alignFast; alignFast = 0;
+			#endif
+		} else {
+			Log.Error("Could not extract reference sequence for read %s.", read->name);
+			validAlignment = false;
+		}
+
+		if (validAlignment) {
+			if (pacbioDebug) {
+				Log.Message("%d of %d bp successfully aligned with score %f and identity %f", alignedBp, readLength, align->Score, align->Identity);
+			}
+			NGM.Stats->alignmentCount += 1;
+		} else {
+			if (pacbioDebug) {
+				Log.Message("Could not align sequences.");
+			}
+			// If alignment failed delete align object and return 0
+			if(align != 0) {
+				align->clearBuffer();
+				align->clearNmPerPosition();
+				delete align;
+				align = 0;
+			}
+		}
+	} catch (...) {
+		Log.Message("Warning: could not compute alignment for read %s", read->name);
+		// If alignment failed delete align object and return 0
+		if(align != 0) {
+			align->clearBuffer();
+			align->clearNmPerPosition();
+			delete align;
+			align = 0;
+		}
+	}
+	return align;
+}
+
+
+
+
+Align * AlignmentBatchBuffer::alignBatchInterval(MappedRead const * const read,
+		Interval const * interval, char const * const readSeq,
+		size_t const readSeqLen, bool const realign, bool const fullAlignment) {
+
+	Align * align = 0;
+
+	if(readSeq == nullptr) {
+		return align;
+	}
+
+	Timer alignTimer;
+	alignTimer.ST();
+
+	int const minReadSeqLength = 10;
+	if (!(llabs(interval->onReadStart - interval->onReadStop) == 0
+			|| llabs(interval->onRefStart - interval->onRefStop) == 0
+			|| readSeqLen < minReadSeqLength)) {
+
+		int corridor = estimateCorridor(interval);
+
+		int QStart = 0;
+		int QEnd = 0;
+
+		if (interval->isReverse) {
+			QEnd = interval->onReadStart;
+			QStart = read->length - interval->onReadStop;
+
+		} else {
+			QStart = interval->onReadStart;
+			QEnd = read->length - interval->onReadStop;
+		}
+
+		if (pacbioDebug) {
+			Log.Message("Computing alignment - Start pos: %d, Length: %d", interval->onReadStart, readSeqLen);
+		}
+		align = computeAlignment(interval, corridor, readSeq, readSeqLen,
+				QStart, QEnd, read->length, read, realign, fullAlignment,
+				false);
+	} else {
+			verbose(0, "Tried to align invalid interval:", interval);
+	}
+	alignTime += alignTimer.ET();
+
+	return align;
+}
+
+
+int AlignmentBatchBuffer::computeMappingQuality(Align const & alignment, int readLength, int readIndex) {
+
+	std::vector<IntervalTree::Interval<int> > results;
+
+	verbose(0, true, "Computing mapping quality:");
+
+	this->readBatchCoordsTree[readIndex]->findOverlapping(alignment.QStart, readLength - alignment.QEnd, results);
+	int mqSum = 0;
+	int mqCount = 0;
+	for (int j = 0; j < results.size(); ++j) {
+		//verbose(1, false, "%d, ", results[j].value);
+		mqSum += results[j].value;
+		mqCount += 1;
+	}
+//	verbose(1, true, "");
+	if (mqCount == 0) return 0;
+	verbose(1, true, "%d / %d = %d", mqSum, mqCount, (int) (mqSum * 1.0f / mqCount));
+	return (int) (mqSum * 1.0f / mqCount);
+
+//		std::vector<IntervalTree::Interval<int> > results;
+//
+//	readCoordsTree->findOverlapping(alignment.QStart,
+//			readLength - alignment.QEnd, results);
+//	int mq = 0;
+//
+//	verbose(0, true, "Computing mq (readlength %d): ", readLength);
+//	int * mqs = new int[results.size()];
+//	for (int j = 0; j < results.size(); ++j) {
+//		mqs[j] = results[j].value;
+//		verbose(1, false, "%d, ", mqs[j]);
+//	}
+//	std::sort(mqs, mqs + results.size(), std::greater<int>());
+//
+//	int length = std::min((int)results.size(), std::max(2, (int)(results.size() * 0.2f + 0.5f)));
+//	verbose(1, false, "\nUsing (%d): ", length);
+//
+//	int mqSum = 0;
+//	int mqCount = 0;
+//	for (int j = 0; j < length; ++j) {
+//		mqSum += mqs[j];
+//		mqCount += 1;
+//		verbose(0, false, "%d, ", mqs[j]);
+//	}
+//	mq = (int) (mqSum * 1.0f / mqCount);
+//	verbose(1, true, "\nMapping quality: %d", mq);
+//
+//	delete[] mqs; mqs = 0;
+//
+//	return mq;
+}
+
+
+
 
 // J.L. change function signature to admit a batch of all of this 
-void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int & alignIndex) {
+void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int & alignIndex, int readIndex) {
 
 	int readSeqLen = interval->onReadStop - interval->onReadStart;
 	auto readPartSeq = extractReadSeq(readSeqLen, interval, read);
 
 	if (readPartSeq != 0) {
-		Align * align = alignInterval(read, interval, readPartSeq.get(), readSeqLen, false, false);
+		Align * align = alignBatchInterval(read, interval, readPartSeq.get(), readSeqLen, false, false);
 		if (align != 0) {
 			if (align->Score > 0.0f) {
 				int svType = SV_NONE;
@@ -44,7 +388,7 @@ void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read
 					svType = detectMisalignment(align, interval, readPartSeq.get(), leftOfInv, rightOfInv, read);
 
 					if (svType != SV_NONE) {
-						int mq = computeMappingQuality(*align, read->length);
+						int mq = computeMappingQuality(*align, read->length, readIndex);
 						int assumedSvType = svType;
 						svType = realign(svType, interval, leftOfInv, rightOfInv, read, tmpAling, alignIndex, tmp, mq);
 					} else {
@@ -66,7 +410,7 @@ void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read
 					// No inversion detected
 					/**********************************************/
 					if (satisfiesConstraints(align, read->length)) {
-						align->MQ = computeMappingQuality(*align, read->length);
+						align->MQ = computeMappingQuality(*align, read->length, readIndex);
 						align->clearNmPerPosition();
 
 						tmpAling[alignIndex] = *align;
@@ -116,17 +460,20 @@ void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read
 
 void AlignmentBatchBuffer::processLongReadBatchLIS() {
 
-    fprintf(stderr, "\tprocess batch LETZGO\n");
+    // fprintf(stderr, "\tprocess batch LETZGO\n");
     
     // initialize arrays for batch processing.
-    int *nIntervalsBatch = new int[this->longReadBatchSize];
+    int *nIntervalsBatch = new int[this->longReadBatchIndex];
+    Interval *** intervalsBatch = NULL;
+    intervalsBatch = new Interval**[this->longReadBatchIndex];    
+    // intervalsBatch = (Interval ***) malloc( this->longReadBatchIndex * sizeof(Interval**));
 
+    Timer overallTmr;
 
     int i = 0;
     for(i = 0; i < this->longReadBatchIndex; i++)
     {
         ReadGroup * group = this->longReadBatch[i];  
-        
         MappedRead * read = group->fullRead;
 
         int maxAnchorNumber = 10000;
@@ -139,7 +486,6 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
          */
         int maxCandidatesPerReadPart = 100;
 
-        Timer overallTmr;
         overallTmr.ST();
 
         if (read->length <= readPartLength) {
@@ -297,7 +643,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
         /**
          * Tree contains all mapped read parts + MQ
          */
-        readCoordsTree = new IntervalTree::IntervalTree<int>(treeIntervals);
+        this->readBatchCoordsTree[i] = new IntervalTree::IntervalTree<int>(treeIntervals);
 
         /**
          * Build HSP from sub read mappings (cLIS)
@@ -307,7 +653,8 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
          * - If isUnique, build Interval from sub-read set and compute regression
          */
         int nIntervals = 0;
-        Interval * * intervals = getIntervalsFromAnchors(nIntervals, anchorsFwd, anchorFwdIndex, anchorsRev, anchorRevIndex, group->fullRead);
+        intervalsBatch[i] = getIntervalsFromAnchors(nIntervals, anchorsFwd, anchorFwdIndex, anchorsRev, anchorRevIndex, group->fullRead);
+        Interval * * intervals = intervalsBatch[i]; //alias for intervalsBatch[i]
 
         verbose(0, true, "\nIntervals after cLIS:");
         for (int i = 0; i < nIntervals; ++i) {
@@ -619,20 +966,59 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
             nIntervals = 0;
 
         }
-    // }
 
+        delete[] anchorsFwd;
+        anchorsFwd = 0;
+        delete[] anchorsRev;
+        anchorsRev = 0;
+  
 
-        /**
-         * Align final intervals to the reference
-         */
+    /**
+     * Align final intervals to the reference
+     */
+        nIntervalsBatch[i] = nIntervals;
+        intervalsBatch[i] = intervals;
+    
+    }
+    for(i = 0; i < this->longReadBatchIndex; i++)
+    {
+        ReadGroup * group = this->longReadBatch[i];  
+        MappedRead * read = group->fullRead;
+        int nIntervals = nIntervalsBatch[i];
+        Interval ** intervals = intervalsBatch[i];
+
+        if (nIntervals > 0 && intervals == 0)
+        {
+            fprintf(stderr, "error, interval is null");
+        }
+        // for (int k = 0; k < this->longReadBatchIndex; k++)
+        // {
+        //     if (intervals)
+        // }
+
         if (nIntervals != 0) {
 
             // Since we don't know how many segments of the read we have to align in the
             // end we need temp arrays to store them
             // TODO: remove fixed upper limit
-            LocationScore * tmpLocationScores = new LocationScore[nIntervals * 4];
-            Align * tmpAlingments = new Align[nIntervals * 4];
+            Align * tmpAlingments = NULL;
+            try {
+                tmpAlingments = new Align[nIntervals * 4];
+            } catch (std::bad_alloc& ba)
+            {
+                std::cerr << "bad_alloc caught: " << ba.what() << '\n';
+                exit(EXIT_FAILURE);
+            }
             int nTempAlignments = 0;
+            LocationScore * tmpLocationScores = NULL;
+            try {
+                tmpLocationScores = new LocationScore[nIntervals * 4];
+
+            } catch (std::bad_alloc& ba)
+            {
+                std::cerr << "bad_alloc caught: " << ba.what() << '\n';
+                exit(EXIT_FAILURE);
+            }
 
             read->Calculated = 0;
 
@@ -682,7 +1068,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
                 verbose(0, "Aligning interval: ", currentInterval);
                 if (!Config.getSkipalign()) {
                     // J.L. change this
-                    alignSingleOrMultipleIntervals(read, currentInterval, tmpLocationScores, tmpAlingments, nTempAlignments);
+                    alignSingleOrMultipleBatchIntervals(read, currentInterval, tmpLocationScores, tmpAlingments, nTempAlignments, i);
                 } else {
                     Log.Message("Skipping alignment computation.");
                 }
@@ -722,11 +1108,6 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
             WriteRead(group->fullRead, false);
         }
 
-        delete[] anchorsFwd;
-        anchorsFwd = 0;
-        delete[] anchorsRev;
-        anchorsRev = 0;
-
         if (intervals != 0) {
             for (int i = 0; i < nIntervals; ++i) {
                 if (intervals[i] != 0) {
@@ -739,8 +1120,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
             nIntervals = 0;
         }
 
-        delete readCoordsTree;
-        readCoordsTree = 0;
+
         processTime += overallTmr.ET();
 
         verbose(0, true, "###########################################");
@@ -749,7 +1129,9 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
         verbose(0, true, "");
 
     }
+
+    delete[] intervalsBatch;
     this->longReadBatchIndex = 0;
-    fprintf(stderr, "\tbatch processed YAY\n");
+    // fprintf(stderr, "\tbatch processed YAY\n");
 }
 
