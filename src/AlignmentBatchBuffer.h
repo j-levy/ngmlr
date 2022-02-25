@@ -35,7 +35,7 @@ public:
     // functions related to batch processing
 	void enqueueLongReadLIS(ReadGroup* group);
 	void processLongReadBatchLIS(); // the read pointer is kept in memory in this->longReadBatch
-    void alignSingleOrMultipleBatchIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int *alignIndex, int readIndex);
+    void alignSingleOrMultipleBatchIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int alignIndex, int readIndex);
     Align * alignBatchInterval(MappedRead const * const read,
 		Interval const * interval, char const * const readSeq,
 		size_t const readSeqLen, bool const realign, bool const fullAlignment);
