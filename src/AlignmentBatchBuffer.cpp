@@ -369,7 +369,7 @@ int AlignmentBatchBuffer::computeMappingQuality(Align const & alignment, int rea
 
 
 // J.L. change function signature to admit a batch of all of this 
-void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int & alignIndex, int readIndex) {
+void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read, Interval const * const interval, LocationScore * tmp, Align * tmpAling, int *alignIndex, int readIndex) {
 
 	int readSeqLen = interval->onReadStop - interval->onReadStart;
 	auto readPartSeq = extractReadSeq(readSeqLen, interval, read);
@@ -390,7 +390,7 @@ void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read
 					if (svType != SV_NONE) {
 						int mq = computeMappingQuality(*align, read->length, readIndex);
 						int assumedSvType = svType;
-						svType = realign(svType, interval, leftOfInv, rightOfInv, read, tmpAling, alignIndex, tmp, mq);
+						svType = realign(svType, interval, leftOfInv, rightOfInv, read, tmpAling, *alignIndex, tmp, mq);
 					} else {
 						verbose(0, true, "No SV detected!");
 					}
@@ -413,18 +413,18 @@ void AlignmentBatchBuffer::alignSingleOrMultipleBatchIntervals(MappedRead * read
 						align->MQ = computeMappingQuality(*align, read->length, readIndex);
 						align->clearNmPerPosition();
 
-						tmpAling[alignIndex] = *align;
+						tmpAling[*alignIndex] = *align;
 						delete align;
 						align = 0;
 
-						tmp[alignIndex].Location.m_Location = interval->onRefStart + tmpAling[alignIndex].PositionOffset;					//- (corridor >> 1); handled in computeAlingment
-						tmp[alignIndex].Location.setReverse(interval->isReverse);
-						tmp[alignIndex].Score.f = tmpAling[alignIndex].Score;
+						tmp[*alignIndex].Location.m_Location = interval->onRefStart + tmpAling[*alignIndex].PositionOffset;					//- (corridor >> 1); handled in computeAlingment
+						tmp[*alignIndex].Location.setReverse(interval->isReverse);
+						tmp[*alignIndex].Score.f = tmpAling[*alignIndex].Score;
 
-						tmpAling[alignIndex].mappedInterval = getIntervalFromAlign(&tmpAling[alignIndex], &tmp[alignIndex], alignIndex, read->length);
+						tmpAling[*alignIndex].mappedInterval = getIntervalFromAlign(&tmpAling[*alignIndex], &tmp[*alignIndex], *alignIndex, read->length);
 
 						read->Calculated += 1;
-						alignIndex += 1;
+						*alignIndex += 1;
 					} else {
 						align->clearBuffer();
 						align->clearNmPerPosition();
@@ -467,6 +467,10 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
     Interval *** intervalsBatch = NULL;
     intervalsBatch = new Interval**[this->longReadBatchIndex];    
     // intervalsBatch = (Interval ***) malloc( this->longReadBatchIndex * sizeof(Interval**));
+
+    Align ** tmpBatchAlignments = new Align*[this->longReadBatchIndex];
+    LocationScore ** tmpBatchLocationScores = new LocationScore*[this->longReadBatchIndex];
+    int * nTempBatchAlignments = new int[this->longReadBatchIndex];
 
     Timer overallTmr;
 
@@ -976,52 +980,39 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
     /**
      * Align final intervals to the reference
      */
+
+        if (nIntervals > 0)
+        {
+            // Since we don't know how many segments of the read we have to align in the
+            // end we need temp arrays to store them
+            // TODO: remove fixed upper limit
+            tmpBatchAlignments[i] = new Align[nIntervals * 4];
+            tmpBatchLocationScores[i] = new LocationScore[nIntervals * 4];
+
+            read->Calculated = 0;
+
+        }
+
         nIntervalsBatch[i] = nIntervals;
         intervalsBatch[i] = intervals;
     
     }
-    for(i = 0; i < this->longReadBatchIndex; i++)
-    {
-        ReadGroup * group = this->longReadBatch[i];  
-        MappedRead * read = group->fullRead;
-        int nIntervals = nIntervalsBatch[i];
-        Interval ** intervals = intervalsBatch[i];
 
-        if (nIntervals > 0 && intervals == 0)
-        {
-            fprintf(stderr, "error, interval is null");
-        }
-        // for (int k = 0; k < this->longReadBatchIndex; k++)
-        // {
-        //     if (intervals)
-        // }
+
+    for(int ii = 0; ii < this->longReadBatchIndex; ii++)
+    {
+        ReadGroup * group = this->longReadBatch[ii];  
+        MappedRead * read = group->fullRead;
+        int nIntervals = nIntervalsBatch[ii];
+        Interval ** intervals = intervalsBatch[ii];
+        Align * tmpAlingments = tmpBatchAlignments[ii];
+        LocationScore * tmpLocationScores = tmpBatchLocationScores[ii];
+        int *nTempAlignments = &(nTempBatchAlignments[ii]);
+        *nTempAlignments = 0;
+        // int initTempAlignments = *nTempAlignments;
+
 
         if (nIntervals != 0) {
-
-            // Since we don't know how many segments of the read we have to align in the
-            // end we need temp arrays to store them
-            // TODO: remove fixed upper limit
-            Align * tmpAlingments = NULL;
-            try {
-                tmpAlingments = new Align[nIntervals * 4];
-            } catch (std::bad_alloc& ba)
-            {
-                std::cerr << "bad_alloc caught: " << ba.what() << '\n';
-                exit(EXIT_FAILURE);
-            }
-            int nTempAlignments = 0;
-            LocationScore * tmpLocationScores = NULL;
-            try {
-                tmpLocationScores = new LocationScore[nIntervals * 4];
-
-            } catch (std::bad_alloc& ba)
-            {
-                std::cerr << "bad_alloc caught: " << ba.what() << '\n';
-                exit(EXIT_FAILURE);
-            }
-
-            read->Calculated = 0;
-
             Timer tmr;
             if (pacbioDebug) {
                 tmr.ST();
@@ -1031,13 +1022,13 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
              */
             for (int i = 0; i < nIntervals; ++i) {
                 Interval * currentInterval = intervals[i];
-
                 /**
                  * Adjust unanglined intervals to not overlap with already
                  * aligned intervals
                  */
+                
                 verbose(0, "Aligning interval: ", currentInterval);
-                for (int j = 0; j < nTempAlignments; ++j) {
+                for (int j = 0; j < *nTempAlignments; ++j) {
                     Interval * alignedInterval = tmpAlingments[j].mappedInterval;
                     verbose(1, "Check overlap with: ", alignedInterval);
 
@@ -1045,6 +1036,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
                     verbose(1, true, "Overlap: %d", overlap);
                     if (overlap > 0 && overlap < currentInterval->lengthOnRead() * 0.95f) {
                         verbose(0, true, "Adjusting interval");
+                        // fprintf(stderr, "overlaping interval - read %d\tnTempAlignments=%d\n", ii, *nTempAlignments);
 
                         if (currentInterval->onReadStart < alignedInterval->onReadStart) {
                             shortenIntervalEnd(currentInterval, overlap);
@@ -1054,6 +1046,7 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
 
                     }
                 }
+                
                 verbose(0, "New interval: ", currentInterval);
 
                 /**
@@ -1068,19 +1061,19 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
                 verbose(0, "Aligning interval: ", currentInterval);
                 if (!Config.getSkipalign()) {
                     // J.L. change this
-                    alignSingleOrMultipleBatchIntervals(read, currentInterval, tmpLocationScores, tmpAlingments, nTempAlignments, i);
+                    alignSingleOrMultipleBatchIntervals(read, currentInterval, tmpLocationScores, tmpAlingments, nTempAlignments, ii);
                 } else {
                     Log.Message("Skipping alignment computation.");
                 }
-                if (nTempAlignments > 0) {
-                    verbose(0, "Aligned interval: ", tmpAlingments[nTempAlignments - 1].mappedInterval);
+                if (*nTempAlignments > 0) {
+                    verbose(0, "Aligned interval: ", tmpAlingments[*nTempAlignments - 1].mappedInterval);
                 }
             }
             if (pacbioDebug) {
                 Log.Message("Alignment took %fs", tmr.ET());
             }
 
-            read->AllocScores(tmpLocationScores, nTempAlignments);
+            read->AllocScores(tmpLocationScores, *nTempAlignments);
             read->Alignments = tmpAlingments;
 
             delete[] tmpLocationScores;
@@ -1130,7 +1123,11 @@ void AlignmentBatchBuffer::processLongReadBatchLIS() {
 
     }
 
+    delete[] nTempBatchAlignments;
     delete[] intervalsBatch;
+    delete[] tmpBatchAlignments;
+    delete[] tmpBatchLocationScores;
+
     this->longReadBatchIndex = 0;
     // fprintf(stderr, "\tbatch processed YAY\n");
 }
