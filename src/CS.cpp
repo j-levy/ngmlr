@@ -293,8 +293,7 @@ void CS::SendToBuffer(MappedRead * read, ScoreBuffer * sw,
 			read->group->readsFinished += 1;
 
 			if (read->group->readsFinished == read->group->readNumber) {
-				fprintf(stderr, "Current sub-read does not have mapping locations\n");
-				out->processLongReadLIS(read->group);
+				out->enqueueLongReadLIS(read->group);
 			}
 		} else {
 			/*
