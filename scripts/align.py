@@ -316,7 +316,8 @@ def generate_dataset(ref, sv_type, sv_nbr=10, conda_bin="$HOME/miniconda3/envs/n
             print_okcyan("fastq files already exist, reusing them")
     
     if chromosome_nbr == None:
-        os.system(f""" cd {sim_dir} && cat *.fastq > {survivor_prefix}.fastq""")
+        if (not os.path.exists(f"{sim_dir}/{survivor_prefix}.fastq")):
+            os.system(f""" cd {sim_dir} && cat *.fastq > {survivor_prefix}.fastq""")
         dataset["read"] = f"{sim_dir}/{survivor_prefix}.fastq"
     else:
         dataset["read"] = f"{sim_dir}/{survivor_prefix}_{chromosome_nbr:04}.fastq"
@@ -351,7 +352,7 @@ def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/
     
     if (is_profiling):
         # note: os.system runs in shell "sh", for which "source" is not defined. We use "." instead.
-        cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=short \
+        cmd = f"""bash -c '. {vtune_setvars} ; {vtune_path} -collect hotspots -target-duration-type=long \
             -app-working-dir "{dataset['output_dir']}" --app-working-dir="{dataset['output_dir']}" \
             -result-dir "{profile_output_path}" \
             -- \
@@ -373,7 +374,7 @@ def align(git_dir: str, dataset: dict, is_profiling: bool = False, vtune_path="/
     runtime = end_time - start_time
     print(f"+++++ Clock time: {runtime}")
     os.system(f"echo '+++++ Clock time: {runtime}' > {dataset['output_dir']}/{dataset['gprof_filename']}")
-    os.system(f"gprof {git_dir}/bin/ngmlr-0.2.8/ngmlr >> {dataset['output_dir']}/{dataset['gprof_filename']}")
+    # os.system(f"gprof {git_dir}/bin/ngmlr-0.2.8/ngmlr >> {dataset['output_dir']}/{dataset['gprof_filename']}")
 
 def bam_convert(dataset):
     conda_bin = dataset['conda_bin']
