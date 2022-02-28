@@ -6,6 +6,7 @@ import align
 """
 
 default_ref = "/media/DataXFS/ngmlr_data/Genomes/s_cerevisiae/s_cerevisiae.fasta"
+# default_ref = "/media/DataXFS/ngmlr_data/Genomes/GRCh38/GRCh38.fasta"
 
 sv_types = [align.SvType.DUP] #, align.SvType.INV, align.SvType.INDEL] #, align.SvType.INV, align.SvType.INVDEL, align.SvType.INVDUP] # , align.SvType.TRANS 
 sv_nbr=20
@@ -18,3 +19,5 @@ force=False
 is_profiling = False
 
 subsegments = [256] # 128, 256, 384, 512, 768, 1024, 2048
+# args = ["--verbose", "--no-progress"]
+args = []
